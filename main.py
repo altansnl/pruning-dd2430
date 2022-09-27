@@ -1,35 +1,43 @@
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras import layers
+import time
 
-class Sampling(layers.Layer):
-    """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
-
-    def call(self, inputs):
-        z_mean, z_log_var = inputs
-        batch = tf.shape(z_mean)[0]
-        dim = tf.shape(z_mean)[1]
-        epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
-        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+from cvae import CVAE
+from preprocess import preprocess_images
 
 latent_dim = 2
+train_size = 60000
+batch_size = 32
+test_size = 10000
+epochs = 10
+num_examples_to_generate = 16
+optimizer = tf.keras.optimizers.Adam(1e-4)
 
-encoder_inputs = keras.Input(shape=(28, 28, 1))
-x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
-x = layers.Conv2D(64, 3, activation="relu", strides=2, padding="same")(x)
-x = layers.Flatten()(x)
-x = layers.Dense(16, activation="relu")(x)
-z_mean = layers.Dense(latent_dim, name="z_mean")(x)
-z_log_var = layers.Dense(latent_dim, name="z_log_var")(x)
-z = Sampling()([z_mean, z_log_var])
-encoder = keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
-# encoder.summary()
+if __name__ == "__main__":
 
-latent_inputs = keras.Input(shape=(latent_dim,))
-x = layers.Dense(7 * 7 * 64, activation="relu")(latent_inputs)
-x = layers.Reshape((7, 7, 64))(x)
-x = layers.Conv2DTranspose(64, 3, activation="relu", strides=2, padding="same")(x)
-x = layers.Conv2DTranspose(32, 3, activation="relu", strides=2, padding="same")(x)
-decoder_outputs = layers.Conv2DTranspose(1, 3, activation="sigmoid", padding="same")(x)
-decoder = keras.Model(latent_inputs, decoder_outputs, name="decoder")
-# decoder.summary()
+    random_vector_for_generation = tf.random.normal(
+        shape=[num_examples_to_generate, latent_dim]
+    )
+
+    cvae = CVAE(latent_dim)
+    
+    (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
+    train_images = preprocess_images(train_images)
+    test_images = preprocess_images(test_images)
+    train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
+                .shuffle(train_size).batch(batch_size))
+    test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
+                .shuffle(test_size).batch(batch_size))
+
+    for epoch in range(1, epochs + 1):
+        start_time = time.time()
+        for train_x in train_dataset:
+            cvae.train_step(train_x, optimizer)
+        end_time = time.time()
+
+        loss = tf.keras.metrics.Mean()
+        for test_x in test_dataset:
+            loss(cvae.compute_loss(test_x))
+        elbo = -loss.result()
+        print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
+                .format(epoch, elbo, end_time - start_time))
