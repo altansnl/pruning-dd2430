@@ -7,6 +7,7 @@ class CVAE(tf.keras.Model):
   def __init__(self, latent_dim):
     super(CVAE, self).__init__()
     self.latent_dim = latent_dim
+    
     self.encoder = tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
