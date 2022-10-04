@@ -11,7 +11,7 @@ latent_dim = 2
 train_size = 60000
 batch_size = 32
 test_size = 10000
-epochs = 10
+epochs = 2
 end_step = np.ceil(train_size / batch_size).astype(np.int32) * epochs
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
@@ -54,10 +54,22 @@ if __name__ == "__main__":
         cvae.encoder,
         clone_function=apply_pruning_to_dense,
     )
-    pruned_encoder.summary()
+    
+    pruned_encoder = tfmot.sparsity.keras.strip_pruning(pruned_encoder)
+
+    print(np.sum([np.count_nonzero(x) for x in pruned_encoder.get_weights()]))
+
+    tfmot.sparsity.keras.strip_pruning(pruned_encoder).summary()
+    
 
     pruned_decoder = tf.keras.models.clone_model(
         cvae.decoder,
         clone_function=apply_pruning_to_dense,
     )
-    pruned_decoder.summary()
+
+    pruned_decoder = tfmot.sparsity.keras.strip_pruning(pruned_decoder)
+
+    print(np.sum([np.count_nonzero(x) for x in pruned_decoder.get_weights()]))
+
+    tfmot.sparsity.keras.strip_pruning(pruned_decoder).summary()
+
