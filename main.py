@@ -16,15 +16,6 @@ end_step = np.ceil(train_size / batch_size).astype(np.int32) * epochs
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
-"""
-pruning_params = {
-      'pruning_schedule': tfmot.sparsity.keras.PolynomialDecay(initial_sparsity=0.50,
-                                                               final_sparsity=0.80,
-                                                               begin_step=0,
-                                                               end_step=end_step)
-}"""
-prune_low_magnitude = tfmot.sparsity.keras.prune_low_magnitude
-
 if __name__ == "__main__":
 
     random_vector_for_generation = tf.random.normal(
