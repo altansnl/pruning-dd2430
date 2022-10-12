@@ -1,40 +1,34 @@
 import tensorflow as tf
+import tensorflow_model_optimization as tfmot
 import numpy as np
 
 class CVAE(tf.keras.Model):
   """Convolutional variational autoencoder."""
 
-  def __init__(self, latent_dim):
+  def __init__(self, latent_dim, pruning_params):
     super(CVAE, self).__init__()
     self.latent_dim = latent_dim
+    self.pruning_params = pruning_params
     
-    self.encoder = tf.keras.Sequential(
+    self.encoder = tfmot.sparsity.keras.prune_low_magnitude(tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-            tf.keras.layers.Conv2D(
-                filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
-            tf.keras.layers.Conv2D(
-                filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+            tf.keras.layers.Dense(256, activation="relu"),
+            tf.keras.layers.Dense(256, activation="relu"),
+            tf.keras.layers.Dense(256, activation="relu"),
             tf.keras.layers.Flatten(),
-            # No activation
             tf.keras.layers.Dense(latent_dim + latent_dim),
         ]
-    )
+    ), **self.pruning_params)
 
     self.decoder = tf.keras.Sequential(
         [
             tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-            tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
-            tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-            tf.keras.layers.Conv2DTranspose(
-                filters=64, kernel_size=3, strides=2, padding='same',
-                activation='relu'),
-            tf.keras.layers.Conv2DTranspose(
-                filters=32, kernel_size=3, strides=2, padding='same',
-                activation='relu'),
-            # No activation
-            tf.keras.layers.Conv2DTranspose(
-                filters=1, kernel_size=3, strides=1, padding='same'),
+            tf.keras.layers.Dense(256, activation="relu"),
+            tf.keras.layers.Dense(256, activation="relu"),
+            tf.keras.layers.Dense(256, activation="relu"),
+            tf.keras.layers.Dense(784),
+            tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
         ]
     )
 
