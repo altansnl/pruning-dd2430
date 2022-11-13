@@ -81,9 +81,9 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
 ##############################################
 scenarios = [1, 2, 3, 4]
 scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-scenario_elbos = [[]] * 4
 
 for no, scenario in enumerate(scenarios):
+    scenario_elbos = []
     cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
     print(f"Scenario: {scenario_labels[no]}")
 
@@ -105,7 +105,7 @@ for no, scenario in enumerate(scenarios):
             for test_x in test_dataset:
                 test_loss(cvae.compute_loss(test_x))
             test_elbo = -test_loss.result()
-            scenario_elbos[no].append(test_elbo.numpy())
+            scenario_elbos.append(test_elbo.numpy())
             # print('Epoch: {}, Train set ELBO: {}, Test set ELBO: {}, time elapse for current epoch: {}'
             #       .format(epoch, train_elbo, test_elbo, end_time - start_time))
             print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
@@ -122,10 +122,7 @@ for no, scenario in enumerate(scenarios):
         cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
         print("pruned and rewinded!")
 
-plt.plot(scenario_elbos[0], label="Original")
-plt.plot(scenario_elbos[1], label="Only Encoder")
-plt.plot(scenario_elbos[2], label="Only Decoder")
-plt.plot(scenario_elbos[3], label="Both Encoder and Decoder")
+    plt.plot(scenario_elbos, label=scenario_labels[no])
 
 plt.legend()
 plt.show()
