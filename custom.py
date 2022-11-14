@@ -8,6 +8,13 @@ import numpy as np
 import pruning
 from model import CVAE
 
+# todo kazanc ne kadar metrikleri koy.
+# todo m kac olmalı? strategy
+# todo farklı datasetler
+# todo dense layer
+# todo gradient, batch norm techniques
+# todo baselines
+
 latent_dim = 2
 train_size = 60000
 batch_size = 32
@@ -24,10 +31,6 @@ def preprocess_images(images):
     images = images.reshape((images.shape[0], 28, 28, 1)) / 255.
     return np.where(images > .5, 1.0, 0.0).astype('float32')
 
-
-random_vector_for_generation = tf.random.normal(
-    shape=[num_examples_to_generate, latent_dim]
-)
 
 initial_encoder = tf.keras.Sequential(
             [
@@ -82,8 +85,11 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
 scenarios = [1, 2, 3, 4]
 scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
 
+fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+
 for no, scenario in enumerate(scenarios):
     scenario_elbos = []
+    inference_time = []
     cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
     print(f"Scenario: {scenario_labels[no]}")
 
@@ -92,23 +98,24 @@ for no, scenario in enumerate(scenarios):
         # cvae.decoder.summary()
 
         for epoch in range(1, epochs + 1):
-            start_time = time.time()
-
             # train_loss = tf.keras.metrics.Mean()
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
                 # train_loss(cvae.compute_loss(train_x))
             # train_elbo = -train_loss.result()
-            end_time = time.time()
 
             test_loss = tf.keras.metrics.Mean()
+            start_time = time.time()
             for test_x in test_dataset:
                 test_loss(cvae.compute_loss(test_x))
+            end_time = time.time()
+
             test_elbo = -test_loss.result()
             scenario_elbos.append(test_elbo.numpy())
+
             # print('Epoch: {}, Train set ELBO: {}, Test set ELBO: {}, time elapse for current epoch: {}'
             #       .format(epoch, train_elbo, test_elbo, end_time - start_time))
-            print('Epoch: {}, Test set ELBO: {}, time elapse for current epoch: {}'
+            print('Epoch: {}, Test set ELBO: {}, Inference time: {}'
                   .format(epoch, test_elbo, end_time - start_time))
 
             if epoch == rewind_weights_epoch:
@@ -117,12 +124,38 @@ for no, scenario in enumerate(scenarios):
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
+        inference_metric = tf.keras.metrics.Mean()
+        start_time = time.time()
+        for test_x in test_dataset:
+            inference_metric(cvae.compute_loss(test_x))
+        end_time = time.time()
+
+        inference_time.append(end_time - start_time)
+
         m = 2
         # local/layer-wise cnn pruning
         cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
         print("pruned and rewinded!")
 
-    plt.plot(scenario_elbos, label=scenario_labels[no])
+    inference_metric = tf.keras.metrics.Mean()
+    start_time = time.time()
+    for test_x in test_dataset:
+        inference_metric(cvae.compute_loss(test_x))
+    end_time = time.time()
 
-plt.legend()
-plt.show()
+    inference_time.append(end_time - start_time)
+
+    ax[1].plot(np.arange(0, len(inference_time)), inference_time, label=scenario_labels[no])
+    ax[0].plot(np.arange(1, len(scenario_elbos) + 1), scenario_elbos, label=scenario_labels[no])
+
+ax[0].legend()
+ax[0].set_xlabel("Epochs")
+ax[0].set_ylabel("NLL")
+
+ax[1].legend()
+ax[1].set_xlabel("Pruning Iterations")
+ax[1].set_ylabel("Inference Time (s)")
+
+fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
+fig.savefig("arch_exp.png")
+fig.show()

@@ -38,18 +38,7 @@ def structural_prune(cvae: CVAE, rewind_cvae: CVAE, m, scenario):
 
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
     else:
-        raise ValueError("x")
-
-    # pruned_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, m)
-    # pruned_encoder.save('saved_models/pruned_encoder.h5')
-    # pruned_encoder = load_model('saved_models/pruned_encoder.h5')
-    #
-    # pruned_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, m)
-    # # pruned_decoder = cvae.decoder
-    # pruned_decoder.save('saved_models/pruned_decoder.h5')
-    # pruned_decoder = load_model('saved_models/pruned_decoder.h5')
-    #
-    # pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
+        raise ValueError("Not applicable Scenario.")
 
     return pruned_cvae
 
@@ -114,14 +103,8 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
                         rewind_biases[remaining_filter_indices]
                     ])
 
-        # if isinstance(layer, keras.layers.Dense):
+        # elif isinstance(layer, keras.layers.Dense):
         #     raise NotImplementedError
-        #
-        # elif isinstance(layer, keras.layers.Flatten):
-        #     raise NotImplementedError  # requires determination of the removed connection for the next dense layer.
-        #
-        # elif isinstance(layer, keras.layers.GlobalAveragePooling2D):
-        #     pruned_submodel.add(tf.keras.layers.GlobalAveragePooling2D())
 
         else:
             config = rewind_submodel.layers[no].get_config()
@@ -162,10 +145,45 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
                 rewind_biases
             ])
 
+    elif isinstance(submodel.layers[-1], keras.layers.Dense):
+        if not isinstance(submodel.layers[-2], keras.layers.Dense) or not isinstance(submodel.layers[-2], keras.layers.Conv2D):
+            if isinstance(submodel.layers[-3], keras.layers.Conv2D):
+                previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
+
+                output_layer_config = rewind_submodel.layers[-1].get_config()
+                output_layer = type(rewind_submodel.layers[-1]).from_config(output_layer_config)
+                pruned_submodel.add(output_layer)
+
+                rewind_weights, rewind_biases = rewind_submodel.layers[-1].get_weights()
+                updated_rewind_weights = rewind_weights[previous_layer_remaining_filter_indices, :]
+
+                pruned_submodel.layers[-1].set_weights([
+                    updated_rewind_weights,
+                    rewind_biases
+                ])
+
+            else:
+                raise NotImplementedError
+        else:
+            raise NotImplementedError
+
     else:
-        output_layer_config = submodel.layers[-1].get_config()
-        output_layer = type(submodel.layers[-1]).from_config(output_layer_config)
+        output_layer_config = rewind_submodel.layers[-1].get_config()
+        weights = rewind_submodel.layers[-1].get_weights()
+
+        output_layer = type(rewind_submodel.layers[-1]).from_config(output_layer_config)
 
         pruned_submodel.add(output_layer)
 
+        pruned_submodel.layers[-1].set_weights(weights)
+
     return pruned_submodel
+
+
+def restore_layer_names(layer, pruned_submodel):
+    layer_config = layer.layers[-1].get_config()
+    layer_config['name'] = 'pruned_' + layer_config['name']
+    new_layer = type(layer).from_config(layer_config)
+    if pruned_submodel.layers[-2].name.startswith('pruned_'):
+        pass  # adjust connections
+    raise NotImplementedError
