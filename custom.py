@@ -1,14 +1,22 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras.models import clone_model
+from keras.utils.layer_utils import count_params
 from tensorflow import keras
 import time
 import numpy as np
 
 import pruning
+import flops
 from model import CVAE
+import utils
 
-# todo kazanc ne kadar metrikleri koy.
+
+# Deterministic run
+tf.keras.utils.set_random_seed(1)
+tf.config.experimental.enable_op_determinism()
+
+# todo Show ratio
 # todo m kac olmalı? strategy
 # todo farklı datasetler
 # todo dense layer
@@ -85,11 +93,14 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
 scenarios = [1, 2, 3, 4]
 scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
 
-fig, ax = plt.subplots(1, 2, figsize=(12, 6))
+fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 
 for no, scenario in enumerate(scenarios):
-    scenario_elbos = []
-    inference_time = []
+    scenario_elbos_list = []
+    total_flops_ratio_list = []
+    mean_inference_time_ratio_list = []
+    total_params_ratio_list = []
+
     cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
     print(f"Scenario: {scenario_labels[no]}")
 
@@ -111,7 +122,7 @@ for no, scenario in enumerate(scenarios):
             end_time = time.time()
 
             test_elbo = -test_loss.result()
-            scenario_elbos.append(test_elbo.numpy())
+            scenario_elbos_list.append(test_elbo.numpy())
 
             # print('Epoch: {}, Train set ELBO: {}, Test set ELBO: {}, time elapse for current epoch: {}'
             #       .format(epoch, train_elbo, test_elbo, end_time - start_time))
@@ -124,38 +135,70 @@ for no, scenario in enumerate(scenarios):
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
-        inference_metric = tf.keras.metrics.Mean()
-        start_time = time.time()
-        for test_x in test_dataset:
-            inference_metric(cvae.compute_loss(test_x))
-        end_time = time.time()
+        mean_inference_time, total_flops, total_params = utils.calculate_metrics(cvae, test_dataset)
 
-        inference_time.append(end_time - start_time)
+        if pruning_iteration == 0:
+            mean_original_inference_time = mean_inference_time
+
+        mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
+
+        if pruning_iteration == 0:
+            original_total_flops = total_flops
+
+        total_flops_ratio = 100 * total_flops / original_total_flops
+
+        if pruning_iteration == 0:
+            original_total_params = total_params
+
+        total_params_ratio = 100 * total_params / original_total_params
+
+        mean_inference_time_ratio_list.append(mean_inference_time_ratio)
+        total_flops_ratio_list.append(total_flops_ratio)
+        total_params_ratio_list.append(total_params_ratio)
 
         m = 2
         # local/layer-wise cnn pruning
         cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
         print("pruned and rewinded!")
 
-    inference_metric = tf.keras.metrics.Mean()
-    start_time = time.time()
-    for test_x in test_dataset:
-        inference_metric(cvae.compute_loss(test_x))
-    end_time = time.time()
+    mean_inference_time, total_flops, total_params = utils.calculate_metrics(cvae, test_dataset)
 
-    inference_time.append(end_time - start_time)
+    mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
+    total_flops_ratio = 100 * total_flops / original_total_flops
+    total_params_ratio = 100 * total_params / original_total_params
 
-    ax[1].plot(np.arange(0, len(inference_time)), inference_time, label=scenario_labels[no])
-    ax[0].plot(np.arange(1, len(scenario_elbos) + 1), scenario_elbos, label=scenario_labels[no])
+    mean_inference_time_ratio_list.append(mean_inference_time_ratio)
+    total_flops_ratio_list.append(total_flops_ratio)
+    total_params_ratio_list.append(total_params_ratio)
 
-ax[0].legend()
-ax[0].set_xlabel("Epochs")
-ax[0].set_ylabel("NLL")
+    ax[0, 0].plot(np.arange(1, len(scenario_elbos_list) + 1), scenario_elbos_list, label=scenario_labels[no])
+    ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list)
+    ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
+    ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
 
-ax[1].legend()
-ax[1].set_xlabel("Pruning Iterations")
-ax[1].set_ylabel("Inference Time (s)")
+# ax[0, 0].legend()
+ax[0, 0].set_xlabel("Epochs")
+ax[0, 0].set_ylabel("NLL")
 
+# ax[0, 1].legend()
+ax[0, 1].set_xlabel("Pruning Iterations")
+ax[0, 1].set_ylabel("Mean Inference Time %")
+
+# ax[1, 0].legend()
+ax[1, 0].set_xlabel("Pruning Iterations")
+ax[1, 0].set_ylabel("FLOPs %")
+
+# ax[1, 1].legend()
+ax[1, 1].set_xlabel("Pruning Iterations")
+ax[1, 1].set_ylabel("Params %")
+
+# lines_labels = [ax.get_legend_handles_labels() for ax in fig.axes]
+# lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
+# fig.legend(lines, labels)
+
+fig.legend(loc=7)
 fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
-fig.savefig("arch_exp.png")
+fig.tight_layout()
+fig.subplots_adjust(right=0.75)
+fig.savefig("results.png")
 fig.show()
