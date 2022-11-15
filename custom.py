@@ -24,7 +24,8 @@ num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
 num_pruning_iterations = 3
-rewind_weights_epoch = 3  # False|epoch number - reverts weights to initial random initialization or specified epoch
+# False|epoch number - reverts weights to initial random initialization or specified epoch
+rewind_weights_epoch = 3
 
 
 def preprocess_images(images):
@@ -33,45 +34,45 @@ def preprocess_images(images):
 
 
 initial_encoder = tf.keras.Sequential(
-            [
-                tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-                tf.keras.layers.Conv2D(
-                    filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
-                tf.keras.layers.Conv2D(
-                    filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Flatten(),
-                tf.keras.layers.GlobalAveragePooling2D(),
-                # No activation
-                tf.keras.layers.Dense(latent_dim + latent_dim),
-            ],
-            name="Encoder"
-        )
+    [
+        tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+        tf.keras.layers.Conv2D(
+            filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
+        tf.keras.layers.Conv2D(
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Flatten(),
+        tf.keras.layers.GlobalAveragePooling2D(),
+        # No activation
+        tf.keras.layers.Dense(latent_dim + latent_dim),
+    ],
+    name="Encoder"
+)
 
 initial_decoder = tf.keras.Sequential(
-            [
-                tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(784),
-                # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
-                tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
-                tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-                tf.keras.layers.Conv2DTranspose(
-                   filters=64, kernel_size=3, strides=2, padding='same',
-                   activation='relu'),
-                tf.keras.layers.Conv2DTranspose(
-                   filters=32, kernel_size=3, strides=2, padding='same',
-                   activation='relu'),
-                # No activation
-                tf.keras.layers.Conv2DTranspose(
-                   filters=1, kernel_size=3, strides=1, padding='same'),
-            ],
-            name="Decoder"
-        )
+    [
+        tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(784),
+        # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
+        tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
+        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+        tf.keras.layers.Conv2DTranspose(
+            filters=64, kernel_size=3, strides=2, padding='same',
+            activation='relu'),
+        tf.keras.layers.Conv2DTranspose(
+            filters=32, kernel_size=3, strides=2, padding='same',
+            activation='relu'),
+        # No activation
+        tf.keras.layers.Conv2DTranspose(
+            filters=1, kernel_size=3, strides=1, padding='same'),
+    ],
+    name="Decoder"
+)
 
 (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
@@ -83,14 +84,16 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
 
 ##############################################
 scenarios = [1, 2, 3, 4]
-scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+scenario_labels = ["Original", "Only Encoder",
+                   "Only Decoder", "Both Encoder and Decoder"]
 
 fig, ax = plt.subplots(1, 2, figsize=(12, 6))
 
 for no, scenario in enumerate(scenarios):
     scenario_elbos = []
     inference_time = []
-    cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
+    cvae = CVAE(clone_model(initial_encoder),
+                clone_model(initial_decoder), latent_dim)
     print(f"Scenario: {scenario_labels[no]}")
 
     for pruning_iteration in range(num_pruning_iterations):
@@ -120,7 +123,8 @@ for no, scenario in enumerate(scenarios):
 
             if epoch == rewind_weights_epoch:
                 print("rewind weights are saved!")
-                rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), latent_dim)
+                rewind_model = CVAE(clone_model(cvae.encoder),
+                                    clone_model(cvae.decoder), latent_dim)
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
@@ -145,8 +149,10 @@ for no, scenario in enumerate(scenarios):
 
     inference_time.append(end_time - start_time)
 
-    ax[1].plot(np.arange(0, len(inference_time)), inference_time, label=scenario_labels[no])
-    ax[0].plot(np.arange(1, len(scenario_elbos) + 1), scenario_elbos, label=scenario_labels[no])
+    ax[1].plot(np.arange(0, len(inference_time)),
+               inference_time, label=scenario_labels[no])
+    ax[0].plot(np.arange(1, len(scenario_elbos) + 1),
+               scenario_elbos, label=scenario_labels[no])
 
 ax[0].legend()
 ax[0].set_xlabel("Epochs")
