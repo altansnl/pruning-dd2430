@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function
 import tensorflow as tf
 import resnet.config as config
-from prepare_data import generate_datasets
+from resnet.prepare_dataset import generate_datasets
 import math
 from resnet18 import ResNet18
 
