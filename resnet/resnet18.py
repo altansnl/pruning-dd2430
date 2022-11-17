@@ -1,5 +1,5 @@
 import tensorflow as tf
-import resnet.config as config
+import config
 
 
 class BasicBlock(tf.keras.layers.Layer):
