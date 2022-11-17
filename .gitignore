@@ -3,3 +3,4 @@ __pycache__/
 *.jpg
 .idea
 saved_models/
+resnet/dataset/*
