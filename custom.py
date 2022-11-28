@@ -1,28 +1,25 @@
 import matplotlib.pyplot as plt
 import tensorflow as tf
 from keras.models import clone_model
-from keras.utils.layer_utils import count_params
 from tensorflow import keras
 import time
 import numpy as np
 import pruning
-import flops
 from model import CVAE
 import utils
 
 tf.keras.utils.set_random_seed(1)
 tf.config.experimental.enable_op_determinism()
 
-latent_dim = 2 # isn't this too low?
+latent_dim = 4 # isn't this too low?
 train_size = 60000
-batch_size = 32
+batch_size = 64
 test_size = 10000
-epochs_normal_fit = 5 # number of epochs to be ran before any prunning cycle
-num_examples_to_generate = 16
+epochs_normal_fit = 2 # number of epochs to be ran before the prunning cycles
 optimizer = tf.keras.optimizers.Adam(1e-4)
 num_pruning_iterations = 3
-epoch_prunning_cycle = 4
-rewind_weights_epoch = 2  # False|epoch number - reverts weights to initial random initialization or specified epoch
+epoch_prunning_cycle = 2
+rewind_weights_epoch = 1 # False|epoch number - reverts weights to initial random initialization or specified epoch
 
 # scenarios = [1, 2, 3, 4]
 # scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
@@ -82,7 +79,7 @@ if __name__ == "__main__":
         mean_inference_time_ratio_list = []
         total_params_ratio_list = []
 
-        def train_epoch():
+        def train_epoch(epoch_number):
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
             test_loss = tf.keras.metrics.Mean()
@@ -92,18 +89,20 @@ if __name__ == "__main__":
             end_time = time.time()
             test_elbo = -test_loss.result()
             elbos_list.append(test_elbo.numpy())
-            print(f'Epoch: {epoch}, Test set ELBO: {test_elbo}, Inference time: {end_time - start_time}')   
+            print(f'Epoch: {epoch_number}, Test set ELBO: {test_elbo}, Inference time: {end_time - start_time}')   
 
         cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
         print(f"Scenario: {scenario_labels[no]}")
 
-        for epoch in range(1, epochs_normal_fit-epoch_prunning_cycle-1):
-            for train_x in train_dataset:
-                train_epoch() 
+        e = 1
+        for epoch in range(1, epochs_normal_fit+1):
+            train_epoch(epoch_number=e)
+            e += 1
 
         for pruning_iteration in range(num_pruning_iterations):
             for epoch in range(1, epoch_prunning_cycle + 1):
-                train_epoch()
+                train_epoch(epoch_number=e)
+                e += 1
 
                 if epoch == rewind_weights_epoch:
                     print("rewind weights are saved!")
@@ -132,7 +131,7 @@ if __name__ == "__main__":
             total_flops_ratio_list.append(total_flops_ratio)
             total_params_ratio_list.append(total_params_ratio)
 
-            m = 2
+            m = 10
             # local/layer-wise cnn pruning
             cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
             print("pruned and rewinded!")
@@ -148,8 +147,8 @@ if __name__ == "__main__":
         total_params_ratio_list.append(total_params_ratio)
 
         ax[0, 0].plot(np.arange(1, len(elbos_list) + 1), elbos_list, label=scenario_labels[no])
-        ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list)
-        ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
+        ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list) 
+        # ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
         ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
 
     # ax[0, 0].legend()
@@ -161,16 +160,12 @@ if __name__ == "__main__":
     ax[0, 1].set_ylabel("Mean Inference Time %")
 
     # ax[1, 0].legend()
-    ax[1, 0].set_xlabel("Pruning Iterations")
-    ax[1, 0].set_ylabel("FLOPs %")
+    # ax[1, 0].set_xlabel("Pruning Iterations")
+    # ax[1, 0].set_ylabel("FLOPs %")
 
     # ax[1, 1].legend()
     ax[1, 1].set_xlabel("Pruning Iterations")
     ax[1, 1].set_ylabel("Params %")
-
-    # lines_labels = [ax.get_legend_handles_labels() for ax in fig.axes]
-    # lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-    # fig.legend(lines, labels)
 
     fig.legend(loc=7)
     fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
