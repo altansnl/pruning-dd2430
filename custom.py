@@ -6,11 +6,12 @@ from keras.models import clone_model
 from tensorflow import keras
 import time
 import numpy as np
+import tensorflow_addons as tfa
 
 import pruning
 from model import CVAE
 
-
+tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 # todo kazanc ne kadar metrikleri koy.
 # todo m kac olmalı? strategy
 # todo farklı datasetler
@@ -20,16 +21,18 @@ from model import CVAE
 
 latent_dim = 2
 # 60000 careful, doesnt change the number of elements in train data set
-train_size = 1000
-batch_size = 100  # 32
+train_size = 1000  # 60000
+batch_size = 32  # 100
 test_size = 100  # 10000
-epochs = 5
+epochs = 1
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
-num_pruning_iterations = 3
+num_pruning_iterations = 1  # 3
 # False|epoch number - reverts weights to initial random initialization or specified epoch
-rewind_weights_epoch = 3
+rewind_weights_epoch = 1  # 3
+
+np.random.seed(0)
 
 
 def preprocess_images(images):
@@ -40,12 +43,14 @@ def preprocess_images(images):
 initial_encoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-        tf.keras.layers.Conv2D(
-            filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
-        tf.keras.layers.Conv2D(
-            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        tfa.layers.WeightNormalization(tf.keras.layers.Conv2D(
+            filters=32, kernel_size=3, strides=(2, 2), activation='relu')),
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        # tfa.layers.WeightNormalization(tf.keras.layers.Conv2D(
+        #     filters=64, kernel_size=3, strides=(2, 2), activation='relu')),
+        # tf.keras.layers.Conv2D(
+        #     filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
@@ -85,13 +90,12 @@ train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 DEBUG_TRAIN_SET = 1
 if DEBUG_TRAIN_SET:
-    train_images = train_images[:1000, :, :, :]
+    train_images = train_images[:100, :, :, :]
     test_images = test_images[:100, :, :, :]
 train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
                  .shuffle(train_size).batch(batch_size))
 test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
                 .shuffle(test_size).batch(batch_size))
-print('TEST', len(list(train_dataset)))
 
 ##############################################
 scenarios = [1, 2, 3, 4]
@@ -151,7 +155,7 @@ for no, scenario in enumerate(scenarios):
         m = 2
         # local/layer-wise cnn pruning
         cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
-        print("pruned and rewinded!")
+        # print("pruned and rewinded!")
 
     inference_metric = tf.keras.metrics.Mean()
     start_time = time.time()
