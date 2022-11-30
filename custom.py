@@ -11,15 +11,16 @@ import utils
 tf.keras.utils.set_random_seed(1)
 tf.config.experimental.enable_op_determinism()
 
-latent_dim = 4 # isn't this too low?
+latent_dim = 8 # isn't this too low?
 train_size = 60000
 batch_size = 64
 test_size = 10000
 epochs_normal_fit = 2 # number of epochs to be ran before the prunning cycles
 optimizer = tf.keras.optimizers.Adam(1e-4)
-num_pruning_iterations = 3
+num_pruning_iterations = 5
 epoch_prunning_cycle = 2
 rewind_weights_epoch = 1 # False|epoch number - reverts weights to initial random initialization or specified epoch
+FINAL_PRUNE_PERCENTAGE = 0.8
 
 # scenarios = [1, 2, 3, 4]
 # scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
@@ -75,19 +76,28 @@ if __name__ == "__main__":
 
     for no, scenario in enumerate(scenarios):
         elbos_list = []
+        elbos_epochs = []
         total_flops_ratio_list = []
         mean_inference_time_ratio_list = []
         total_params_ratio_list = []
 
-        def train_epoch(epoch_number):
+        def train_epoch(epoch_number, test_first=False):
+            test_loss = tf.keras.metrics.Mean()
+            if test_first:
+                for test_x in test_dataset:
+                    test_loss(cvae.compute_loss(test_x))
+                test_elbo = -test_loss.result()
+                elbos_list.append(test_elbo.numpy())
+                elbos_epochs.append(epoch_number-0.01)
+                print(f'Epoch: {epoch_number}, Test set ELBO: {test_elbo}') 
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
-            test_loss = tf.keras.metrics.Mean()
             start_time = time.time()
             for test_x in test_dataset:
                 test_loss(cvae.compute_loss(test_x))
             end_time = time.time()
             test_elbo = -test_loss.result()
+            elbos_epochs.append(epoch_number+0.01)
             elbos_list.append(test_elbo.numpy())
             print(f'Epoch: {epoch_number}, Test set ELBO: {test_elbo}, Inference time: {end_time - start_time}')   
 
@@ -99,9 +109,10 @@ if __name__ == "__main__":
             train_epoch(epoch_number=e)
             e += 1
 
-        for pruning_iteration in range(num_pruning_iterations):
+        for pruning_iteration in range(num_pruning_iterations+1):
             for epoch in range(1, epoch_prunning_cycle + 1):
-                train_epoch(epoch_number=e)
+                first_epoch_in_prunning = epoch == 1
+                train_epoch(epoch_number=e, test_first=first_epoch_in_prunning)
                 e += 1
 
                 if epoch == rewind_weights_epoch:
@@ -131,26 +142,36 @@ if __name__ == "__main__":
             total_flops_ratio_list.append(total_flops_ratio)
             total_params_ratio_list.append(total_params_ratio)
 
-            m = 10
-            # local/layer-wise cnn pruning
-            cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
-            print("pruned and rewinded!")
+            if pruning_iteration != num_pruning_iterations:
+                if pruning_iteration == 0:
+                    left_to_prune_encoder = None
+                    left_to_prune_decoder = None
+                print("maps before pruning")
+                print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+                cvae, left_to_prune_encoder, left_to_prune_decoder = pruning.structural_prune(
+                    cvae, 
+                    rewind_model, 
+                    scenario, 
+                    left_to_prune_encoder, 
+                    left_to_prune_decoder, 
+                    FINAL_PRUNE_PERCENTAGE, 
+                    num_pruning_iterations-pruning_iteration
+                )
+                print("maps after pruning")
+                print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+                print("pruned and rewinded!")
 
         mean_inference_time, total_flops, total_params = utils.calculate_metrics(cvae, test_dataset)
-
         mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
         total_flops_ratio = 100 * total_flops / original_total_flops
         total_params_ratio = 100 * total_params / original_total_params
-
         mean_inference_time_ratio_list.append(mean_inference_time_ratio)
         total_flops_ratio_list.append(total_flops_ratio)
         total_params_ratio_list.append(total_params_ratio)
-
-        ax[0, 0].plot(np.arange(1, len(elbos_list) + 1), elbos_list, label=scenario_labels[no])
+        ax[0, 0].plot(elbos_epochs, elbos_list, label=scenario_labels[no])
         ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list) 
-        # ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
+        ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
         ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
-
     # ax[0, 0].legend()
     ax[0, 0].set_xlabel("Epochs")
     ax[0, 0].set_ylabel("NLL")
@@ -160,8 +181,8 @@ if __name__ == "__main__":
     ax[0, 1].set_ylabel("Mean Inference Time %")
 
     # ax[1, 0].legend()
-    # ax[1, 0].set_xlabel("Pruning Iterations")
-    # ax[1, 0].set_ylabel("FLOPs %")
+    ax[1, 0].set_xlabel("Pruning Iterations")
+    ax[1, 0].set_ylabel("FLOPs %")
 
     # ax[1, 1].legend()
     ax[1, 1].set_xlabel("Pruning Iterations")
