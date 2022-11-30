@@ -11,21 +11,21 @@ import utils
 tf.keras.utils.set_random_seed(1)
 tf.config.experimental.enable_op_determinism()
 
-latent_dim = 8 # isn't this too low?
-train_size = 60000
-batch_size = 64
-test_size = 10000
-epochs_normal_fit = 2 # number of epochs to be ran before the prunning cycles
-optimizer = tf.keras.optimizers.Adam(1e-4)
-num_pruning_iterations = 5
-epoch_prunning_cycle = 2
-rewind_weights_epoch = 1 # False|epoch number - reverts weights to initial random initialization or specified epoch
+# HYPER-PARAMETERS FOR EXPERIMENTS
+LATENT_DIM             = 8       # isn't this too low?
+TRAIN_SIZE             = 60000
+BATCH_SIZE             = 64
+TEST_SIZE              = 10000
+EPOCH_NORMAL_FIT       = 30       # number of epochs to be ran before the prunning cycles
+NUM_PRUNING_CYCLES     = 5
+EPOCH_PRUNING_CYCLE    = 5
+REWIND_WEIGHTS_EPOCH   = 2       # reverts weights to initial random initialization or specified epoch
 FINAL_PRUNE_PERCENTAGE = 0.8
 
-# scenarios = [1, 2, 3, 4]
-# scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-scenarios = [2]
-scenario_labels = ["Only Encoder"]
+SCENARIOS = [1, 2, 3, 4]
+SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+
+optimizer = tf.keras.optimizers.Adam(1e-4)
 
 def preprocess_images(images):
     images = images.reshape((images.shape[0], 28, 28, 1)) / 255.
@@ -41,14 +41,14 @@ if __name__ == "__main__":
                         filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
                     tf.keras.layers.GlobalAveragePooling2D(),
                     # No activation
-                    tf.keras.layers.Dense(latent_dim + latent_dim),
+                    tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
                 ],
                 name="Encoder"
             )
 
     initial_decoder = tf.keras.Sequential(
                 [
-                    tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+                    tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
                     tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
                     tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
                     tf.keras.layers.Conv2DTranspose(
@@ -68,13 +68,13 @@ if __name__ == "__main__":
     train_images = preprocess_images(train_images)
     test_images = preprocess_images(test_images)
     train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
-                    .shuffle(train_size).batch(batch_size))
+                    .shuffle(TRAIN_SIZE).batch(BATCH_SIZE))
     test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
-                    .shuffle(test_size).batch(batch_size))
+                    .shuffle(TEST_SIZE).batch(BATCH_SIZE))
 
     fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 
-    for no, scenario in enumerate(scenarios):
+    for no, scenario in enumerate(SCENARIOS):
         elbos_list = []
         elbos_epochs = []
         total_flops_ratio_list = []
@@ -101,23 +101,23 @@ if __name__ == "__main__":
             elbos_list.append(test_elbo.numpy())
             print(f'Epoch: {epoch_number}, Test set ELBO: {test_elbo}, Inference time: {end_time - start_time}')   
 
-        cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
-        print(f"Scenario: {scenario_labels[no]}")
+        cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), LATENT_DIM)
+        print(f"Scenario: {SCENARIO_LABELS[no]}")
 
         e = 1
-        for epoch in range(1, epochs_normal_fit+1):
+        for epoch in range(1, EPOCH_NORMAL_FIT+1):
             train_epoch(epoch_number=e)
             e += 1
 
-        for pruning_iteration in range(num_pruning_iterations+1):
-            for epoch in range(1, epoch_prunning_cycle + 1):
+        for pruning_iteration in range(NUM_PRUNING_CYCLES+1):
+            for epoch in range(1, EPOCH_PRUNING_CYCLE + 1):
                 first_epoch_in_prunning = epoch == 1
                 train_epoch(epoch_number=e, test_first=first_epoch_in_prunning)
                 e += 1
 
-                if epoch == rewind_weights_epoch:
+                if epoch == REWIND_WEIGHTS_EPOCH:
                     print("rewind weights are saved!")
-                    rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), latent_dim)
+                    rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), LATENT_DIM)
                     rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                     rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
@@ -142,7 +142,7 @@ if __name__ == "__main__":
             total_flops_ratio_list.append(total_flops_ratio)
             total_params_ratio_list.append(total_params_ratio)
 
-            if pruning_iteration != num_pruning_iterations:
+            if pruning_iteration != NUM_PRUNING_CYCLES:
                 if pruning_iteration == 0:
                     left_to_prune_encoder = None
                     left_to_prune_decoder = None
@@ -155,7 +155,7 @@ if __name__ == "__main__":
                     left_to_prune_encoder, 
                     left_to_prune_decoder, 
                     FINAL_PRUNE_PERCENTAGE, 
-                    num_pruning_iterations-pruning_iteration
+                    NUM_PRUNING_CYCLES-pruning_iteration
                 )
                 print("maps after pruning")
                 print(left_to_prune_encoder, "\n", left_to_prune_decoder)
@@ -168,7 +168,7 @@ if __name__ == "__main__":
         mean_inference_time_ratio_list.append(mean_inference_time_ratio)
         total_flops_ratio_list.append(total_flops_ratio)
         total_params_ratio_list.append(total_params_ratio)
-        ax[0, 0].plot(elbos_epochs, elbos_list, label=scenario_labels[no])
+        ax[0, 0].plot(elbos_epochs, elbos_list, label=SCENARIO_LABELS[no])
         ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list) 
         ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
         ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
@@ -189,7 +189,7 @@ if __name__ == "__main__":
     ax[1, 1].set_ylabel("Params %")
 
     fig.legend(loc=7)
-    fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
+    fig.suptitle(f"Pruning metrics (prune percetange:{FINAL_PRUNE_PERCENTAGE}, total epoch:{EPOCH_NORMAL_FIT+NUM_PRUNING_CYCLES*EPOCH_PRUNING_CYCLE}, prune cycles:{NUM_PRUNING_CYCLES})")
     fig.tight_layout()
     fig.subplots_adjust(right=0.75)
     fig.savefig("results.png")
