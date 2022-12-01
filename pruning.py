@@ -1,42 +1,35 @@
-import tensorflow as tf
-from keras.saving.save import load_model
-from tensorflow import keras
 import numpy as np
+import tensorflow as tf
+from tensorflow import keras
 
+import utils
 from model import CVAE
 
 
 def structural_prune(cvae: CVAE, rewind_cvae: CVAE, m, scenario):
     if scenario == 1:
-        pruned_cvae = cvae
+        utils.save_models(cvae.encoder, cvae.decoder, scenario)
+        pruned_cvae = utils.reset_and_load_models(cvae.latent_dim, scenario)
 
     elif scenario == 2:
         pruned_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, m)
-        pruned_encoder.save('saved_models/pruned_encoder.h5')
-        pruned_encoder = load_model('saved_models/pruned_encoder.h5')
 
-        pruned_decoder = cvae.decoder
-        pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
+        utils.save_models(pruned_encoder, cvae.decoder, scenario)
+        pruned_cvae = utils.reset_and_load_models(cvae.latent_dim, scenario)
 
     elif scenario == 3:
-        pruned_encoder = cvae.encoder
-
         pruned_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, m)
-        pruned_decoder.save('saved_models/pruned_decoder.h5')
-        pruned_decoder = load_model('saved_models/pruned_decoder.h5')
 
-        pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
+        utils.save_models(cvae.encoder, pruned_decoder, scenario)
+        pruned_cvae = utils.reset_and_load_models(cvae.latent_dim, scenario)
 
     elif scenario == 4:
         pruned_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, m)
-        pruned_encoder.save('saved_models/pruned_encoder.h5')
-        pruned_encoder = load_model('saved_models/pruned_encoder.h5')
-
         pruned_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, m)
-        pruned_decoder.save('saved_models/pruned_decoder.h5')
-        pruned_decoder = load_model('saved_models/pruned_decoder.h5')
 
-        pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
+        utils.save_models(pruned_encoder, pruned_decoder, scenario)
+        pruned_cvae = utils.reset_and_load_models(cvae.latent_dim, scenario)
+
     else:
         raise ValueError("Not applicable Scenario.")
 
@@ -146,7 +139,8 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
             ])
 
     elif isinstance(submodel.layers[-1], keras.layers.Dense):
-        if not isinstance(submodel.layers[-2], keras.layers.Dense) or not isinstance(submodel.layers[-2], keras.layers.Conv2D):
+        if not isinstance(submodel.layers[-2], keras.layers.Dense) or not isinstance(submodel.layers[-2],
+                                                                                     keras.layers.Conv2D):
             if isinstance(submodel.layers[-3], keras.layers.Conv2D):
                 previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
 

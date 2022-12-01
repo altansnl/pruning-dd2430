@@ -1,38 +1,38 @@
+import os
+import time
+from datetime import datetime
+
 import matplotlib.pyplot as plt
+import numpy as np
 import tensorflow as tf
 from keras.models import clone_model
-from keras.utils.layer_utils import count_params
 from tensorflow import keras
-import time
-import numpy as np
 
 import pruning
-import flops
-from model import CVAE
 import utils
-
+from model import CVAE
 
 # Deterministic run
 tf.keras.utils.set_random_seed(1)
 tf.config.experimental.enable_op_determinism()
 
-# todo Show ratio
+# todo fix inference time
 # todo m kac olmalı? strategy
 # todo farklı datasetler
 # todo dense layer
 # todo gradient, batch norm techniques
 # todo baselines
 
-latent_dim = 2
+latent_dim = 20
 train_size = 60000
 batch_size = 32
 test_size = 10000
-epochs = 5
+epochs = 8
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
-num_pruning_iterations = 3
-rewind_weights_epoch = 3  # False|epoch number - reverts weights to initial random initialization or specified epoch
+num_pruning_iterations = 5
+rewind_weights_epoch = 4  # False|epoch number - reverts weights to initial random initialization or specified epoch
 
 
 def preprocess_images(images):
@@ -41,45 +41,45 @@ def preprocess_images(images):
 
 
 initial_encoder = tf.keras.Sequential(
-            [
-                tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-                tf.keras.layers.Conv2D(
-                    filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
-                tf.keras.layers.Conv2D(
-                    filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Flatten(),
-                tf.keras.layers.GlobalAveragePooling2D(),
-                # No activation
-                tf.keras.layers.Dense(latent_dim + latent_dim),
-            ],
-            name="Encoder"
-        )
+    [
+        tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+        tf.keras.layers.Conv2D(
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        tf.keras.layers.Conv2D(
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Flatten(),
+        tf.keras.layers.GlobalAveragePooling2D(),
+        # No activation
+        tf.keras.layers.Dense(latent_dim + latent_dim),
+    ],
+    name="Encoder"
+)
 
 initial_decoder = tf.keras.Sequential(
-            [
-                tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(256, activation="relu"),
-                # tf.keras.layers.Dense(784),
-                # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
-                tf.keras.layers.Dense(units=7*7*32, activation=tf.nn.relu),
-                tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-                tf.keras.layers.Conv2DTranspose(
-                   filters=64, kernel_size=3, strides=2, padding='same',
-                   activation='relu'),
-                tf.keras.layers.Conv2DTranspose(
-                   filters=32, kernel_size=3, strides=2, padding='same',
-                   activation='relu'),
-                # No activation
-                tf.keras.layers.Conv2DTranspose(
-                   filters=1, kernel_size=3, strides=1, padding='same'),
-            ],
-            name="Decoder"
-        )
+    [
+        tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(256, activation="relu"),
+        # tf.keras.layers.Dense(784),
+        # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
+        tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
+        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+        tf.keras.layers.Conv2DTranspose(
+            filters=64, kernel_size=3, strides=2, padding='same',
+            activation='relu'),
+        tf.keras.layers.Conv2DTranspose(
+            filters=64, kernel_size=3, strides=2, padding='same',
+            activation='relu'),
+        # No activation
+        tf.keras.layers.Conv2DTranspose(
+            filters=1, kernel_size=3, strides=1, padding='same'),
+    ],
+    name="Decoder"
+)
 
 (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
@@ -92,6 +92,8 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
 ##############################################
 scenarios = [1, 2, 3, 4]
 scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+# scenarios = [1, 2, 4]
+# scenario_labels = ["Original", "Only Encoder", "Both Encoder and Decoder"]
 
 fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 
@@ -101,6 +103,7 @@ for no, scenario in enumerate(scenarios):
     mean_inference_time_ratio_list = []
     total_params_ratio_list = []
 
+    # Create a new base model for each scenario.
     cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
     print(f"Scenario: {scenario_labels[no]}")
 
@@ -109,24 +112,19 @@ for no, scenario in enumerate(scenarios):
         # cvae.decoder.summary()
 
         for epoch in range(1, epochs + 1):
-            # train_loss = tf.keras.metrics.Mean()
+            start_time = time.time()
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
-                # train_loss(cvae.compute_loss(train_x))
-            # train_elbo = -train_loss.result()
+            end_time = time.time()
 
             test_loss = tf.keras.metrics.Mean()
-            start_time = time.time()
             for test_x in test_dataset:
                 test_loss(cvae.compute_loss(test_x))
-            end_time = time.time()
 
             test_elbo = -test_loss.result()
             scenario_elbos_list.append(test_elbo.numpy())
 
-            # print('Epoch: {}, Train set ELBO: {}, Test set ELBO: {}, time elapse for current epoch: {}'
-            #       .format(epoch, train_elbo, test_elbo, end_time - start_time))
-            print('Epoch: {}, Test set ELBO: {}, Inference time: {}'
+            print('Epoch: {}, Test set ELBO: {}, Training time: {}'
                   .format(epoch, test_elbo, end_time - start_time))
 
             if epoch == rewind_weights_epoch:
@@ -135,7 +133,7 @@ for no, scenario in enumerate(scenarios):
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
-        mean_inference_time, total_flops, total_params = utils.calculate_metrics(cvae, test_dataset)
+        mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset, scenario)
 
         if pruning_iteration == 0:
             mean_original_inference_time = mean_inference_time
@@ -156,12 +154,12 @@ for no, scenario in enumerate(scenarios):
         total_flops_ratio_list.append(total_flops_ratio)
         total_params_ratio_list.append(total_params_ratio)
 
-        m = 2
+        m = 6
         # local/layer-wise cnn pruning
         cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
         print("pruned and rewinded!")
 
-    mean_inference_time, total_flops, total_params = utils.calculate_metrics(cvae, test_dataset)
+    mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset, scenario)
 
     mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
     total_flops_ratio = 100 * total_flops / original_total_flops
@@ -192,13 +190,14 @@ ax[1, 0].set_ylabel("FLOPs %")
 ax[1, 1].set_xlabel("Pruning Iterations")
 ax[1, 1].set_ylabel("Params %")
 
-# lines_labels = [ax.get_legend_handles_labels() for ax in fig.axes]
-# lines, labels = [sum(lol, []) for lol in zip(*lines_labels)]
-# fig.legend(lines, labels)
+date_string = datetime.now().strftime("%d-%m-%Y-%H-%M")
+results_dir = "results/"
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
 
 fig.legend(loc=7)
 fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
 fig.tight_layout()
 fig.subplots_adjust(right=0.75)
-fig.savefig("results.png")
+fig.savefig(results_dir + date_string + "_results.png")
 fig.show()
