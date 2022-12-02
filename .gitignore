@@ -4,3 +4,4 @@ __pycache__/
 .idea
 saved_models/
 test.py
+acc.py

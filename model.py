@@ -42,7 +42,8 @@ class CVAE:
         mean, logvar = self.encode(x)
         z = self.reparameterize(mean, logvar)
         x_logit = self.decode(z)
-        cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(logits=x_logit, labels=x)
+        cross_ent = tf.nn.sigmoid_cross_entropy_with_logits(
+            logits=x_logit, labels=x)
         logpx_z = -tf.reduce_sum(cross_ent, axis=[1, 2, 3])
         logpz = self._log_normal_pdf(z, 0., 0.)
         logqz_x = self._log_normal_pdf(z, mean, logvar)
@@ -57,5 +58,7 @@ class CVAE:
         """
         with tf.GradientTape() as tape:
             loss = self.compute_loss(x)
-        gradients = tape.gradient(loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
-        optimizer.apply_gradients(zip(gradients, self.encoder.trainable_variables + self.decoder.trainable_variables))
+        gradients = tape.gradient(
+            loss, self.encoder.trainable_variables + self.decoder.trainable_variables)
+        optimizer.apply_gradients(zip(
+            gradients, self.encoder.trainable_variables + self.decoder.trainable_variables))

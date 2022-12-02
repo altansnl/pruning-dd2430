@@ -9,6 +9,7 @@ import numpy as np
 import tensorflow_addons as tfa
 
 import pruning
+# import test
 from model import CVAE
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
@@ -21,16 +22,16 @@ tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 latent_dim = 2
 # 60000 careful, doesnt change the number of elements in train data set
-train_size = 1000  # 60000
+train_size = 100  # 60000
 batch_size = 32  # 100
 test_size = 100  # 10000
-epochs = 1
+epochs = 20
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
-num_pruning_iterations = 1  # 3
+num_pruning_iterations = 3  # 3
 # False|epoch number - reverts weights to initial random initialization or specified epoch
-rewind_weights_epoch = 1  # 3
+rewind_weights_epoch = 3  # 3
 
 np.random.seed(0)
 
@@ -43,18 +44,12 @@ def preprocess_images(images):
 initial_encoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-        tfa.layers.WeightNormalization(tf.keras.layers.Conv2D(
-            filters=32, kernel_size=3, strides=(2, 2), activation='relu')),
+        tf.keras.layers.Conv2D(
+            filters=32, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-        # tfa.layers.WeightNormalization(tf.keras.layers.Conv2D(
-        #     filters=64, kernel_size=3, strides=(2, 2), activation='relu')),
-        # tf.keras.layers.Conv2D(
-        #     filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Flatten(),
+        tf.keras.layers.Conv2D(
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.GlobalAveragePooling2D(),
         # No activation
         tf.keras.layers.Dense(latent_dim + latent_dim),
@@ -65,11 +60,6 @@ initial_encoder = tf.keras.Sequential(
 initial_decoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(784),
-        # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
         tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
         tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
         tf.keras.layers.Conv2DTranspose(
@@ -152,9 +142,10 @@ for no, scenario in enumerate(scenarios):
 
         inference_time.append(end_time - start_time)
 
-        m = 2
+        NUMBER_FILTERS_TO_PRUNE = 5
         # local/layer-wise cnn pruning
-        cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
+        cvae = pruning.structural_prune(
+            cvae, rewind_model, NUMBER_FILTERS_TO_PRUNE, scenario)
         # print("pruned and rewinded!")
 
     inference_metric = tf.keras.metrics.Mean()
