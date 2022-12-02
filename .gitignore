@@ -5,3 +5,4 @@ __pycache__/
 saved_models/
 test.py
 acc.py
+backup_code/
