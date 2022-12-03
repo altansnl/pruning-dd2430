@@ -19,12 +19,13 @@ tf.config.experimental.enable_op_determinism()
 # HYPER-PARAMETERS FOR EXPERIMENTS
 LATENT_DIM = 8       # isn't this too low?
 BUFFER_SIZE = 10000
-ACT_TRAIN_SIZE = 100
+ACT_TRAIN_SIZE = 10000
 BATCH_SIZE = 64
 TEST_SIZE = 100
-EPOCH_NORMAL_FIT = 10  # 30       # number of epochs to be ran before the prunning cycles
-NUM_PRUNING_CYCLES = 3  # 5
-EPOCH_PRUNING_CYCLE = 3  # 5
+ACT_TEST_SIZE = 1000
+EPOCH_NORMAL_FIT = 30  # 30       # number of epochs to be ran before the prunning cycles
+NUM_PRUNING_CYCLES = 5  # 5
+EPOCH_PRUNING_CYCLE = 5  # 5
 # reverts weights to initial random initialization or specified epoch
 REWIND_WEIGHTS_EPOCH = 2
 FINAL_PRUNE_PERCENTAGE = 0.8
@@ -81,13 +82,12 @@ if __name__ == "__main__":
     DEBUG_TRAIN_SET = 1
     if DEBUG_TRAIN_SET:
         train_images = train_images[:ACT_TRAIN_SIZE, :, :, :]
-        test_images = test_images[:ACT_TRAIN_SIZE, :, :, :]
+        test_images = test_images[:ACT_TEST_SIZE, :, :, :]
     train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
                      .shuffle(BUFFER_SIZE).batch(BATCH_SIZE))
     test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
                     .shuffle(TEST_SIZE).batch(BATCH_SIZE))
 
-    print(len(train_dataset))
     fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 
     for no, scenario in enumerate(SCENARIOS):
@@ -96,6 +96,7 @@ if __name__ == "__main__":
         total_flops_ratio_list = []
         mean_inference_time_ratio_list = []
         total_params_ratio_list = []
+        elbos_list_pruning_iter = []  # used to store the elbos after each pruning iteration
 
         def train_epoch(epoch_number, test_first=False):
             test_loss = tf.keras.metrics.Mean()
@@ -142,8 +143,8 @@ if __name__ == "__main__":
                     rewind_model.decoder.set_weights(
                         cvae.decoder.get_weights())
 
-            mean_inference_time, total_flops, total_params = utils.calculate_metrics(
-                cvae, test_dataset)
+            mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(
+                cvae, test_dataset, scenario)
 
             if pruning_iteration == 0:
                 mean_original_inference_time = mean_inference_time
@@ -163,6 +164,7 @@ if __name__ == "__main__":
             mean_inference_time_ratio_list.append(mean_inference_time_ratio)
             total_flops_ratio_list.append(total_flops_ratio)
             total_params_ratio_list.append(total_params_ratio)
+            elbos_list_pruning_iter.append(elbos_list[-1])
 
             if pruning_iteration != NUM_PRUNING_CYCLES:
                 if pruning_iteration == 0:
@@ -183,37 +185,57 @@ if __name__ == "__main__":
                 print(left_to_prune_encoder, "\n", left_to_prune_decoder)
                 print("pruned and rewinded!")
 
-        mean_inference_time, total_flops, total_params = utils.calculate_metrics(
-            cvae, test_dataset)
-        mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
-        total_flops_ratio = 100 * total_flops / original_total_flops
-        total_params_ratio = 100 * total_params / original_total_params
-        mean_inference_time_ratio_list.append(mean_inference_time_ratio)
-        total_flops_ratio_list.append(total_flops_ratio)
-        total_params_ratio_list.append(total_params_ratio)
+        # TODO: Aren't the below calculations redundant?
+        # mean_inference_time, total_flops, total_params = utils.calculate_metrics(
+        #     cvae, test_dataset)
+        # mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
+        # total_flops_ratio = 100 * total_flops / original_total_flops
+        # total_params_ratio = 100 * total_params / original_total_params
+        # mean_inference_time_ratio_list.append(mean_inference_time_ratio)
+        # total_flops_ratio_list.append(total_flops_ratio)
+        # total_params_ratio_list.append(total_params_ratio)
+        print(total_params_ratio_list)
+        print(elbos_list_pruning_iter)
+        print(list(reversed(elbos_list_pruning_iter)))
+        elbos_list = [x * -1 for x in elbos_list]
+        elbos_list_pruning_iter = [x * -1 for x in elbos_list_pruning_iter]
         ax[0, 0].plot(elbos_epochs, elbos_list,
                       label=SCENARIO_LABELS[scenario - 1])
-        ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)),
+        ax[0, 0].set_xlabel("Epochs")
+        ax[0, 0].set_ylabel("NLL")
+        ax[0, 1].plot(total_params_ratio_list,
                       mean_inference_time_ratio_list)
-        ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)),
-                      total_flops_ratio_list)
-        ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)),
-                      total_params_ratio_list)
-    # ax[0, 0].legend()
-    ax[0, 0].set_xlabel("Epochs")
-    ax[0, 0].set_ylabel("NLL")
+        ax[0, 1].invert_xaxis()
+        ax[0, 1].set_xlabel("Params %")
+        ax[0, 1].set_ylabel("Mean Inference Time %")
 
-    # ax[0, 1].legend()
-    ax[0, 1].set_xlabel("Pruning Iterations")
-    ax[0, 1].set_ylabel("Mean Inference Time %")
-
-    # ax[1, 0].legend()
-    ax[1, 0].set_xlabel("Pruning Iterations")
-    ax[1, 0].set_ylabel("FLOPs %")
-
-    # ax[1, 1].legend()
-    ax[1, 1].set_xlabel("Pruning Iterations")
-    ax[1, 1].set_ylabel("Params %")
+        ax[1, 0].plot(
+            total_flops_ratio_list, elbos_list_pruning_iter)
+        ax[1, 0].invert_xaxis()
+        ax[1, 0].set_xlabel("FLOPs %")
+        ax[1, 0].set_ylabel("NLL")
+        ax[1, 1].plot(
+            total_params_ratio_list, elbos_list_pruning_iter)
+        ax[1, 1].invert_xaxis()
+        ax[1, 1].set_xlabel("Params %")
+        ax[1, 1].set_ylabel("NLL")
+        # original one below
+        # ax[0, 0].plot(elbos_epochs, elbos_list,
+        #               label=SCENARIO_LABELS[scenario - 1])
+        # ax[0, 0].set_xlabel("Epochs")
+        # ax[0, 0].set_ylabel("NLL")
+        # ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)),
+        #               mean_inference_time_ratio_list)
+        # ax[0, 1].set_xlabel("Params %")
+        # ax[0, 1].set_ylabel("Mean Inference Time %")
+        # ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)),
+        #               total_flops_ratio_list)
+        # ax[1, 0].set_xlabel("Pruning Iterations")
+        # ax[1, 0].set_ylabel("FLOPs %")
+        # ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)),
+        #               total_params_ratio_list)
+        # ax[1, 1].set_xlabel("Pruning Iterations")
+        # ax[1, 1].set_ylabel("Params %")
 
     fig.legend(loc=7)
     fig.suptitle(
@@ -222,3 +244,4 @@ if __name__ == "__main__":
     fig.subplots_adjust(right=0.75)
     fig.savefig("results.png")
     fig.show()
+    plt.show()
