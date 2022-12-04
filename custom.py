@@ -18,11 +18,11 @@ tf.config.experimental.enable_op_determinism()
 
 # HYPER-PARAMETERS FOR EXPERIMENTS
 LATENT_DIM = 8       # isn't this too low?
-BUFFER_SIZE = 10000
-ACT_TRAIN_SIZE = 10000
+BUFFER_SIZE = 60000
+ACT_TRAIN_SIZE = 60000
 BATCH_SIZE = 64
-TEST_SIZE = 100
-ACT_TEST_SIZE = 1000
+TEST_SIZE = 10000
+ACT_TEST_SIZE = 10000
 EPOCH_NORMAL_FIT = 30  # 30       # number of epochs to be ran before the prunning cycles
 NUM_PRUNING_CYCLES = 5  # 5
 EPOCH_PRUNING_CYCLE = 5  # 5
@@ -30,8 +30,7 @@ EPOCH_PRUNING_CYCLE = 5  # 5
 REWIND_WEIGHTS_EPOCH = 2
 FINAL_PRUNE_PERCENTAGE = 0.8
 
-# SCENARIOS = [1, 2, 3, 4]
-SCENARIOS = [4]
+SCENARIOS = [1, 2, 3, 4]
 SCENARIO_LABELS = ["Original", "Only Encoder",
                    "Only Decoder", "Both Encoder and Decoder"]
 
@@ -170,8 +169,8 @@ if __name__ == "__main__":
                 if pruning_iteration == 0:
                     left_to_prune_encoder = None
                     left_to_prune_decoder = None
-                print("maps before pruning")
-                print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+                # print("maps before pruning")
+                # print(left_to_prune_encoder, "\n", left_to_prune_decoder)
                 cvae, left_to_prune_encoder, left_to_prune_decoder = pruning.structural_prune(
                     cvae,
                     rewind_model,
@@ -181,9 +180,9 @@ if __name__ == "__main__":
                     FINAL_PRUNE_PERCENTAGE,
                     NUM_PRUNING_CYCLES - pruning_iteration
                 )
-                print("maps after pruning")
-                print(left_to_prune_encoder, "\n", left_to_prune_decoder)
-                print("pruned and rewinded!")
+                # print("maps after pruning")
+                # print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+                # print("pruned and rewinded!")
 
         # TODO: Aren't the below calculations redundant?
         # mean_inference_time, total_flops, total_params = utils.calculate_metrics(
@@ -194,9 +193,6 @@ if __name__ == "__main__":
         # mean_inference_time_ratio_list.append(mean_inference_time_ratio)
         # total_flops_ratio_list.append(total_flops_ratio)
         # total_params_ratio_list.append(total_params_ratio)
-        print(total_params_ratio_list)
-        print(elbos_list_pruning_iter)
-        print(list(reversed(elbos_list_pruning_iter)))
         elbos_list = [x * -1 for x in elbos_list]
         elbos_list_pruning_iter = [x * -1 for x in elbos_list_pruning_iter]
         ax[0, 0].plot(elbos_epochs, elbos_list,
@@ -205,18 +201,15 @@ if __name__ == "__main__":
         ax[0, 0].set_ylabel("NLL")
         ax[0, 1].plot(total_params_ratio_list,
                       mean_inference_time_ratio_list)
-        ax[0, 1].invert_xaxis()
         ax[0, 1].set_xlabel("Params %")
         ax[0, 1].set_ylabel("Mean Inference Time %")
 
         ax[1, 0].plot(
             total_flops_ratio_list, elbos_list_pruning_iter)
-        ax[1, 0].invert_xaxis()
         ax[1, 0].set_xlabel("FLOPs %")
         ax[1, 0].set_ylabel("NLL")
         ax[1, 1].plot(
             total_params_ratio_list, elbos_list_pruning_iter)
-        ax[1, 1].invert_xaxis()
         ax[1, 1].set_xlabel("Params %")
         ax[1, 1].set_ylabel("NLL")
         # original one below
@@ -236,6 +229,11 @@ if __name__ == "__main__":
         #               total_params_ratio_list)
         # ax[1, 1].set_xlabel("Pruning Iterations")
         # ax[1, 1].set_ylabel("Params %")
+    ax[0, 1].invert_xaxis()
+
+    ax[1, 0].invert_xaxis()
+
+    ax[1, 1].invert_xaxis()
 
     fig.legend(loc=7)
     fig.suptitle(

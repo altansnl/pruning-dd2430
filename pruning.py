@@ -17,13 +17,18 @@ def structural_prune(
     left_to_prune_encoder=None,
     left_to_prune_decoder=None,
     final_prune_percentage=0.8,
-    prunes_left=5
+    prunes_left=5,
+    _global=True,
 ):
     if scenario == 1:
         pruned_cvae = cvae
     elif scenario == 2:
-        pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(
-            cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
+        if _global:
+            pruned_encoder, left_to_prune_encoder = _global_structural_prune_submodel(
+                cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
+        else:
+            pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(
+                cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
         pruned_encoder.save('saved_models/pruned_encoder.h5')
         pruned_encoder = load_model(
             'saved_models/pruned_encoder.h5', compile=False)
@@ -32,16 +37,18 @@ def structural_prune(
 
     elif scenario == 3:
         pruned_encoder = cvae.encoder
-        pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(
-            cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left)
+        if _global:
+            pruned_decoder, left_to_prune_decoder = _global_structural_prune_submodel(
+                cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left)
+        else:
+            pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(
+                cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left)
         pruned_decoder.save('saved_models/pruned_decoder.h5')
         pruned_decoder = load_model('saved_models/pruned_decoder.h5')
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
 
     elif scenario == 4:
-        # TODO: only for testing like this
-        GLOBAL_PRUNE = 1
-        if GLOBAL_PRUNE:
+        if _global:
             pruned_encoder, left_to_prune_encoder = _global_structural_prune_submodel(
                 cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
             pruned_encoder.save('saved_models/pruned_encoder.h5')
