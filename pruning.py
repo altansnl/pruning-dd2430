@@ -20,6 +20,10 @@ def structural_prune(
     prunes_left=5,
     _global=True,
 ):
+    if _global:
+        print('[LOG] Pruning mode: Global')
+    else:
+        print('[LOG] Pruning mode: Per Layer')
     if scenario == 1:
         pruned_cvae = cvae
     elif scenario == 2:
