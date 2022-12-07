@@ -123,7 +123,7 @@ for no, scenario in enumerate(scenarios):
             for test_x in test_dataset:
                 test_loss(cvae.compute_loss(test_x))
 
-            test_elbo = -test_loss.result()
+            test_elbo = test_loss.result()
             scenario_elbos_list.append(test_elbo.numpy())
 
             print('Epoch: {}, Test set ELBO: {}, Training time: {}'
