@@ -12,9 +12,7 @@ import pruning
 from model import CVAE
 import utils
 
-# todo fix inference time
-# todo m kac olmalı? strategy
-# todo farklı datasetler
+# todo different datasets
 # todo dense layer
 # todo gradient, batch norm techniques
 # todo baselines
