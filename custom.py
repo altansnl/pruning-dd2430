@@ -19,8 +19,8 @@ TEST_SIZE              = 10000
 EPOCH_NORMAL_FIT       = 30       # number of epochs to be ran before the prunning cycles
 NUM_PRUNING_CYCLES     = 5
 EPOCH_PRUNING_CYCLE    = 5
-REWIND_WEIGHTS_EPOCH   = 2       # reverts weights to initial random initialization or specified epoch
-FINAL_PRUNE_PERCENTAGE = 0.8
+REWIND_WEIGHTS_EPOCH   = 3       # reverts weights to initial random initialization or specified epoch
+FINAL_PRUNE_PERCENTAGE = 0.9
 
 SCENARIOS = [1, 2, 3, 4]
 SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
@@ -112,7 +112,7 @@ if __name__ == "__main__":
         for pruning_iteration in range(NUM_PRUNING_CYCLES+1):
             for epoch in range(1, EPOCH_PRUNING_CYCLE + 1):
                 first_epoch_in_prunning = epoch == 1
-                train_epoch(epoch_number=e, test_first=first_epoch_in_prunning)
+                train_epoch(epoch_number=e, test_first=False)
                 e += 1
 
                 if epoch == REWIND_WEIGHTS_EPOCH:
@@ -189,8 +189,9 @@ if __name__ == "__main__":
     ax[1, 1].set_ylabel("Params %")
 
     fig.legend(loc=7)
-    fig.suptitle(f"Pruning metrics (prune percetange:{FINAL_PRUNE_PERCENTAGE}, total epoch:{EPOCH_NORMAL_FIT+NUM_PRUNING_CYCLES*EPOCH_PRUNING_CYCLE}, prune cycles:{NUM_PRUNING_CYCLES})")
+    total_epochs = EPOCH_NORMAL_FIT+(NUM_PRUNING_CYCLES+1)*EPOCH_PRUNING_CYCLE
+    fig.suptitle(f"Pruning metrics (prune percetange:{FINAL_PRUNE_PERCENTAGE}, total epochs:{total_epochs}, prune cycles:{NUM_PRUNING_CYCLES})")
     fig.tight_layout()
     fig.subplots_adjust(right=0.75)
-    fig.savefig("results.png")
+    fig.savefig(f"outputs/{int(FINAL_PRUNE_PERCENTAGE*100)}-{NUM_PRUNING_CYCLES}.png")
     fig.show()

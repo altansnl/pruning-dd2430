@@ -3,6 +3,7 @@ import time
 import numpy as np
 from keras.utils.layer_utils import count_params
 import tensorflow as tf
+import flops
 
 
 def calculate_metrics(cvae, test_dataset):
@@ -21,10 +22,10 @@ def calculate_metrics(cvae, test_dataset):
     # FLOPs
     sample = next(iter(test_dataset))
     enc_sample = tf.constant(np.expand_dims(sample[0], axis=0))
-    # encoder_flops = flops.get_flops(cvae.encoder, [enc_sample])
-    # dec_sample = tf.constant(np.expand_dims(cvae.encoder(sample)[0, :2], axis=0))
-    # decoder_flops = flops.get_flops(cvae.decoder, [dec_sample])
-    # total_flops = encoder_flops + decoder_flops
+    encoder_flops = flops.get_flops(cvae.encoder, [enc_sample])
+    dec_sample = tf.constant(np.expand_dims(cvae.encoder(sample)[0, :cvae.latent_dim], axis=0))
+    decoder_flops = flops.get_flops(cvae.decoder, [dec_sample])
+    total_flops = encoder_flops + decoder_flops
 
     # Parameters
     enc_trainable_params = sum(count_params(layer) for layer in cvae.encoder.trainable_weights)
@@ -34,4 +35,4 @@ def calculate_metrics(cvae, test_dataset):
 
     total_params = enc_trainable_params + enc_non_trainable_params + dec_trainable_params + dec_non_trainable_params
 
-    return mean_inference_time, 1, total_params
+    return mean_inference_time, total_flops, total_params
