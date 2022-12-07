@@ -13,8 +13,8 @@ import utils
 from model import CVAE
 
 # Deterministic run
-tf.keras.utils.set_random_seed(1)
-tf.config.experimental.enable_op_determinism()
+# tf.keras.utils.set_random_seed(1)
+# tf.config.experimental.enable_op_determinism()
 
 # todo fix inference time
 # todo m kac olmalı? strategy
@@ -27,12 +27,12 @@ latent_dim = 20
 train_size = 60000
 batch_size = 32
 test_size = 10000
-epochs = 8
+epochs = 3# 8
 num_examples_to_generate = 16
 optimizer = tf.keras.optimizers.Adam(1e-4)
 
-num_pruning_iterations = 5
-rewind_weights_epoch = 4  # False|epoch number - reverts weights to initial random initialization or specified epoch
+num_pruning_iterations = 1#5
+rewind_weights_epoch = 2#4  # False|epoch number - reverts weights to initial random initialization or specified epoch
 
 
 def preprocess_images(images):
@@ -45,8 +45,10 @@ initial_encoder = tf.keras.Sequential(
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        tf.keras.layers.BatchNormalization(),  # batch norm gives error??
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+        tf.keras.layers.BatchNormalization(),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
@@ -90,10 +92,10 @@ test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
                 .shuffle(test_size).batch(batch_size))
 
 ##############################################
-scenarios = [1, 2, 3, 4]
-scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-# scenarios = [1, 2, 4]
-# scenario_labels = ["Original", "Only Encoder", "Both Encoder and Decoder"]
+# scenarios = [1, 2, 3, 4]
+# scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+scenarios = [4]
+scenario_labels = ["Both Encoder and Decoder"]
 
 fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 

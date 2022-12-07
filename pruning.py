@@ -63,10 +63,10 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
             # Get rewind weights
             rewind_weights, rewind_biases = rewind_submodel.layers[no].get_weights()
 
-            if isinstance(submodel.layers[no - 1], keras.layers.Conv2D):
+            if isinstance(submodel.layers[no - 1], keras.layers.Conv2D) or isinstance(submodel.layers[no - 1], keras.layers.BatchNormalization):
                 previous_layer_remaining_filter_indices = remaining_filter_indices_list[-2]
 
-                if isinstance(submodel.layers[no - 1], keras.layers.Conv2DTranspose):
+                if isinstance(layer, keras.layers.Conv2DTranspose):
                     updated_rewind_weights = rewind_weights[:, :, :, previous_layer_remaining_filter_indices]
                 else:
                     updated_rewind_weights = rewind_weights[:, :, previous_layer_remaining_filter_indices, :]
@@ -96,18 +96,30 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
                         rewind_biases[remaining_filter_indices]
                     ])
 
-        # elif isinstance(layer, keras.layers.Dense):
-        #     raise NotImplementedError
+        elif isinstance(layer, keras.layers.BatchNormalization):
+            config = rewind_submodel.layers[no].get_config()
+            cloned_layer = type(rewind_submodel.layers[no]).from_config(config)
+            pruned_submodel.add(cloned_layer)
+
+            remaining_filter_indices_list.append(remaining_filter_indices_list[-1])
+            # Get rewind weights
+            rewind_weights = rewind_submodel.layers[no].get_weights()
+
+            if isinstance(submodel.layers[no - 1], keras.layers.Conv2D):
+                previous_layer_remaining_filter_indices = remaining_filter_indices_list[-2]
+
+                updated_rewind_weights = [weight[previous_layer_remaining_filter_indices] for weight in rewind_weights]
+
+                pruned_submodel.layers[-1].set_weights(updated_rewind_weights)
 
         else:
             config = rewind_submodel.layers[no].get_config()
-            weights = rewind_submodel.layers[no].get_weights()
 
             cloned_layer = type(rewind_submodel.layers[no]).from_config(config)
-
             pruned_submodel.add(cloned_layer)
 
-            pruned_submodel.layers[-1].set_weights(weights)
+            rewind_weights = rewind_submodel.layers[no].get_weights()
+            pruned_submodel.layers[-1].set_weights(rewind_weights)
 
     # Add last layer
     if isinstance(submodel.layers[-1], keras.layers.Conv2D):
@@ -139,9 +151,8 @@ def _structural_prune_submodel(submodel: tf.keras.Sequential, rewind_submodel: t
             ])
 
     elif isinstance(submodel.layers[-1], keras.layers.Dense):
-        if not isinstance(submodel.layers[-2], keras.layers.Dense) or not isinstance(submodel.layers[-2],
-                                                                                     keras.layers.Conv2D):
-            if isinstance(submodel.layers[-3], keras.layers.Conv2D):
+        if isinstance(submodel.layers[-2], keras.layers.GlobalAveragePooling2D):
+            if isinstance(submodel.layers[-3], keras.layers.Conv2D) or isinstance(submodel.layers[-3], keras.layers.BatchNormalization):
                 previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
 
                 output_layer_config = rewind_submodel.layers[-1].get_config()

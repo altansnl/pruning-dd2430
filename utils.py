@@ -29,7 +29,7 @@ def calculate_time(test_dataset, latent_dim, scenario):
     decoder_inputs = test_dataset.map(lambda x: test_cvae.encoder(x, training=False)[:, :latent_dim])
 
     inference_time = []
-    for i in range(10):
+    for i in range(6):
         start_time = time.time()
         test_cvae.encoder.predict(test_dataset)
         test_cvae.decoder.predict(decoder_inputs)
