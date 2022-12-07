@@ -4,7 +4,6 @@ import numpy as np
 import tensorflow as tf
 from keras.saving.save import load_model
 from keras.utils.layer_utils import count_params
-
 import flops
 from model import CVAE
 
@@ -46,6 +45,7 @@ def calculate_flop(test_dataset, latent_dim, scenario):
 
     sample = next(iter(test_dataset))
     enc_sample = tf.constant(np.expand_dims(sample[0], axis=0))
+
     encoder_flops = flops.get_flops(test_cvae.encoder, [enc_sample])
 
     dec_sample = tf.constant(np.expand_dims(test_cvae.encoder(sample)[0, :latent_dim], axis=0))

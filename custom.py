@@ -9,12 +9,8 @@ from keras.models import clone_model
 from tensorflow import keras
 
 import pruning
-import utils
 from model import CVAE
-
-# Deterministic run
-# tf.keras.utils.set_random_seed(1)
-# tf.config.experimental.enable_op_determinism()
+import utils
 
 # todo fix inference time
 # todo m kac olmalı? strategy
@@ -23,16 +19,25 @@ from model import CVAE
 # todo gradient, batch norm techniques
 # todo baselines
 
-latent_dim = 20
-train_size = 60000
-batch_size = 32
-test_size = 10000
-epochs = 3# 8
-num_examples_to_generate = 16
-optimizer = tf.keras.optimizers.Adam(1e-4)
+# tf.keras.utils.set_random_seed(1)
+# tf.config.experimental.enable_op_determinism()
 
-num_pruning_iterations = 1#5
-rewind_weights_epoch = 2#4  # False|epoch number - reverts weights to initial random initialization or specified epoch
+# HYPER-PARAMETERS FOR EXPERIMENTS
+LATENT_DIM = 20  # isn't this too low?
+TRAIN_SIZE = 60000
+BATCH_SIZE = 64
+TEST_SIZE = 10000
+NUM_PRUNING_CYCLES = 1
+EPOCH_PRUNING_CYCLE = 3
+REWIND_WEIGHTS_EPOCH = 2  # reverts weights to initial random initialization or specified epoch
+FINAL_PRUNE_PERCENTAGE = 0.4
+
+# SCENARIOS = [1, 2, 3, 4]
+# SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+SCENARIOS = [1, 4]
+SCENARIO_LABELS = ["Original", "Both Encoder and Decoder"]
+
+optimizer = tf.keras.optimizers.Adam(1e-4)
 
 
 def preprocess_images(images):
@@ -45,7 +50,7 @@ initial_encoder = tf.keras.Sequential(
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-        tf.keras.layers.BatchNormalization(),  # batch norm gives error??
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.BatchNormalization(),
@@ -55,14 +60,14 @@ initial_encoder = tf.keras.Sequential(
         # tf.keras.layers.Flatten(),
         tf.keras.layers.GlobalAveragePooling2D(),
         # No activation
-        tf.keras.layers.Dense(latent_dim + latent_dim),
+        tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
     ],
     name="Encoder"
 )
 
 initial_decoder = tf.keras.Sequential(
     [
-        tf.keras.layers.InputLayer(input_shape=(latent_dim,)),
+        tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
         # tf.keras.layers.Dense(256, activation="relu"),
@@ -87,33 +92,29 @@ initial_decoder = tf.keras.Sequential(
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
 train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
-                 .shuffle(train_size).batch(batch_size))
+                 .shuffle(TRAIN_SIZE).batch(BATCH_SIZE))
 test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
-                .shuffle(test_size).batch(batch_size))
+                .shuffle(TRAIN_SIZE).batch(BATCH_SIZE))
 
 ##############################################
-# scenarios = [1, 2, 3, 4]
-# scenario_labels = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-scenarios = [4]
-scenario_labels = ["Both Encoder and Decoder"]
 
 fig, ax = plt.subplots(2, 2, figsize=(11, 7))
 
-for no, scenario in enumerate(scenarios):
+for no, scenario in enumerate(SCENARIOS):
     scenario_elbos_list = []
     total_flops_ratio_list = []
     mean_inference_time_ratio_list = []
     total_params_ratio_list = []
 
     # Create a new base model for each scenario.
-    cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), latent_dim)
-    print(f"Scenario: {scenario_labels[no]}")
+    cvae = CVAE(clone_model(initial_encoder), clone_model(initial_decoder), LATENT_DIM)
+    print(f"Scenario: {SCENARIO_LABELS[no]}")
 
-    for pruning_iteration in range(num_pruning_iterations):
+    for pruning_iteration in range(NUM_PRUNING_CYCLES):
         # cvae.encoder.summary()
         # cvae.decoder.summary()
 
-        for epoch in range(1, epochs + 1):
+        for epoch in range(1, EPOCH_PRUNING_CYCLE + 1):
             start_time = time.time()
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
@@ -129,49 +130,60 @@ for no, scenario in enumerate(scenarios):
             print('Epoch: {}, Test set ELBO: {}, Training time: {}'
                   .format(epoch, test_elbo, end_time - start_time))
 
-            if epoch == rewind_weights_epoch:
+            if epoch == REWIND_WEIGHTS_EPOCH:
                 print("rewind weights are saved!")
-                rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), latent_dim)
+                rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), LATENT_DIM)
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
 
-        mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset, scenario)
-
         if pruning_iteration == 0:
+            mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset,
+                                                                                              scenario)
             mean_original_inference_time = mean_inference_time
-
-        mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
-
-        if pruning_iteration == 0:
             original_total_flops = total_flops
-
-        total_flops_ratio = 100 * total_flops / original_total_flops
-
-        if pruning_iteration == 0:
             original_total_params = total_params
 
+            mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
+            total_flops_ratio = 100 * total_flops / original_total_flops
+            total_params_ratio = 100 * total_params / original_total_params
+
+            mean_inference_time_ratio_list.append(mean_inference_time_ratio)
+            total_flops_ratio_list.append(total_flops_ratio)
+            total_params_ratio_list.append(total_params_ratio)
+
+        if pruning_iteration == 0:
+            left_to_prune_encoder = None
+            left_to_prune_decoder = None
+
+        print("maps before pruning")
+        print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+
+        cvae, left_to_prune_encoder, left_to_prune_decoder = pruning.structural_prune(
+            cvae,
+            rewind_model,
+            scenario,
+            left_to_prune_encoder,
+            left_to_prune_decoder,
+            FINAL_PRUNE_PERCENTAGE,
+            NUM_PRUNING_CYCLES - pruning_iteration
+        )
+
+        print("maps after pruning")
+        print(left_to_prune_encoder, "\n", left_to_prune_decoder)
+        print("pruned and rewinded!")
+
+        mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset,
+                                                                                          scenario)
+
+        mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
+        total_flops_ratio = 100 * total_flops / original_total_flops
         total_params_ratio = 100 * total_params / original_total_params
 
         mean_inference_time_ratio_list.append(mean_inference_time_ratio)
         total_flops_ratio_list.append(total_flops_ratio)
         total_params_ratio_list.append(total_params_ratio)
 
-        m = 6
-        # local/layer-wise cnn pruning
-        cvae = pruning.structural_prune(cvae, rewind_model, m, scenario)
-        print("pruned and rewinded!")
-
-    mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset, scenario)
-
-    mean_inference_time_ratio = 100 * mean_inference_time / mean_original_inference_time
-    total_flops_ratio = 100 * total_flops / original_total_flops
-    total_params_ratio = 100 * total_params / original_total_params
-
-    mean_inference_time_ratio_list.append(mean_inference_time_ratio)
-    total_flops_ratio_list.append(total_flops_ratio)
-    total_params_ratio_list.append(total_params_ratio)
-
-    ax[0, 0].plot(np.arange(1, len(scenario_elbos_list) + 1), scenario_elbos_list, label=scenario_labels[no])
+    ax[0, 0].plot(np.arange(1, len(scenario_elbos_list) + 1), scenario_elbos_list, label=SCENARIO_LABELS[no])
     ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list)
     ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
     ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
@@ -193,13 +205,16 @@ ax[1, 1].set_xlabel("Pruning Iterations")
 ax[1, 1].set_ylabel("Params %")
 
 date_string = datetime.now().strftime("%d-%m-%Y-%H-%M")
-results_dir = "results/"
+results_dir = "results/" + date_string + "/"
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
 
+total_epochs = EPOCH_PRUNING_CYCLE * NUM_PRUNING_CYCLES
+
 fig.legend(loc=7)
-fig.suptitle("VAE Pruning every 5 epoch. Rewind to 3rd epoch.")
+fig.suptitle(
+    f"Pruning metrics (prune percetange:{FINAL_PRUNE_PERCENTAGE}, total epochs:{total_epochs}, prune cycles:{NUM_PRUNING_CYCLES})")
 fig.tight_layout()
 fig.subplots_adjust(right=0.75)
-fig.savefig(results_dir + date_string + "_results.png")
+fig.savefig(results_dir + f"pp_{int(FINAL_PRUNE_PERCENTAGE * 100)}.png")
 fig.show()
