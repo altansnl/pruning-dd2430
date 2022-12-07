@@ -6,9 +6,6 @@ def get_flops(model, model_inputs) -> float:
     Calculate FLOPS [GFLOPs] for a tf.keras.Model or tf.keras.Sequential model
     in inference mode. It uses tf.compat.v1.profiler under the hood.
     """
-    # if not hasattr(model, "model"):
-    #     raise wandb.Error("self.model must be set before using this method.")
-
     if not isinstance(
         model, (tf.keras.models.Sequential, tf.keras.models.Model)
     ):
@@ -46,8 +43,7 @@ def get_flops(model, model_inputs) -> float:
         graph=frozen_func.graph, run_meta=run_meta, cmd="scope", options=opts
     )
 
-    tf.compat.v1.reset_default_graph()
+    # tf.compat.v1.reset_default_graph()
+    tf.keras.backend.clear_session()
 
-    # convert to GFLOPs
-    # return (flops.total_float_ops / 1e9)/2
     return flops.total_float_ops/2

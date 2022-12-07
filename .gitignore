@@ -1,5 +1,6 @@
 __pycache__/
 *.png
 *.jpg
-.idea
+.idea/
 saved_models/
+results/
