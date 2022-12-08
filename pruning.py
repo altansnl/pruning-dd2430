@@ -11,12 +11,13 @@ def structural_prune(
     left_to_prune_encoder=None, 
     left_to_prune_decoder=None,
     final_prune_percentage=0.8,
-    prunes_left=5
+    prunes_left=5.,
+    reinit=False
     ):
     if scenario == 1:
         pruned_cvae = cvae
     elif scenario == 2:
-        pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
+        pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left, reinit)
         pruned_encoder.save('saved_models/pruned_encoder.h5')
         pruned_encoder = load_model('saved_models/pruned_encoder.h5', compile=False)
         pruned_decoder = cvae.decoder
@@ -24,16 +25,16 @@ def structural_prune(
 
     elif scenario == 3:
         pruned_encoder = cvae.encoder
-        pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left)
+        pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left, reinit)
         pruned_decoder.save('saved_models/pruned_decoder.h5')
         pruned_decoder = load_model('saved_models/pruned_decoder.h5')
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
 
     elif scenario == 4:
-        pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
+        pruned_encoder, left_to_prune_encoder = _structural_prune_submodel(cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left, reinit)
         pruned_encoder.save('saved_models/pruned_encoder.h5')
         pruned_encoder = load_model('saved_models/pruned_encoder.h5')
-        pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left)
+        pruned_decoder, left_to_prune_decoder = _structural_prune_submodel(cvae.decoder, rewind_cvae.decoder, left_to_prune_decoder, final_prune_percentage, prunes_left, reinit)
         pruned_decoder.save('saved_models/pruned_decoder.h5')
         pruned_decoder = load_model('saved_models/pruned_decoder.h5')
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
@@ -47,7 +48,8 @@ def _structural_prune_submodel(
     rewind_submodel: tf.keras.Sequential, 
     left_to_prune=None, 
     final_prune_percentage=0.8,
-    prunes_left=5
+    prunes_left=5,
+    reinit=False
     ):
     # A map keeping how many filters left to be removed per prunable layer
     if left_to_prune is None:
@@ -91,34 +93,37 @@ def _structural_prune_submodel(
                 else:
                     updated_rewind_weights = rewind_weights[:, :, previous_layer_remaining_filter_indices, :]
                 if isinstance(layer, keras.layers.Conv2DTranspose):
-                    pruned_submodel.layers[-1].set_weights([
-                        updated_rewind_weights[:, :, remaining_filter_indices, :],
-                        rewind_biases[remaining_filter_indices]
-                    ])
+                    if not reinit:
+                        pruned_submodel.layers[-1].set_weights([
+                            updated_rewind_weights[:, :, remaining_filter_indices, :],
+                            rewind_biases[remaining_filter_indices]
+                        ])
                 else:
-                    pruned_submodel.layers[-1].set_weights([
-                        updated_rewind_weights[:, :, :, remaining_filter_indices],
-                        rewind_biases[remaining_filter_indices]
-                    ])
-
+                    if not reinit:
+                        pruned_submodel.layers[-1].set_weights([
+                            updated_rewind_weights[:, :, :, remaining_filter_indices],
+                            rewind_biases[remaining_filter_indices]
+                        ])
             else:
                 if isinstance(layer, keras.layers.Conv2DTranspose):
-                    pruned_submodel.layers[-1].set_weights([
-                        rewind_weights[:, :, remaining_filter_indices, :],
-                        rewind_biases[remaining_filter_indices]
-                    ])
-
+                    if not reinit:
+                        pruned_submodel.layers[-1].set_weights([
+                            rewind_weights[:, :, remaining_filter_indices, :],
+                            rewind_biases[remaining_filter_indices]
+                        ])
                 else:
-                    pruned_submodel.layers[-1].set_weights([
-                        rewind_weights[:, :, :, remaining_filter_indices],
-                        rewind_biases[remaining_filter_indices]
-                    ])
+                    if not reinit:
+                        pruned_submodel.layers[-1].set_weights([
+                            rewind_weights[:, :, :, remaining_filter_indices],
+                            rewind_biases[remaining_filter_indices]
+                        ])
         else:
             config = rewind_submodel.layers[no].get_config()
             weights = rewind_submodel.layers[no].get_weights()
             cloned_layer = type(rewind_submodel.layers[no]).from_config(config)
             pruned_submodel.add(cloned_layer)
-            pruned_submodel.layers[-1].set_weights(weights)
+            if not reinit:
+                pruned_submodel.layers[-1].set_weights(weights)
 
     # Add last layer
     if isinstance(submodel.layers[-1], keras.layers.Conv2D):
@@ -133,15 +138,17 @@ def _structural_prune_submodel(
                 updated_rewind_weights = rewind_weights[:, :, :, previous_layer_remaining_filter_indices]
             else:
                 updated_rewind_weights = rewind_weights[:, :, previous_layer_remaining_filter_indices, :]
-            pruned_submodel.layers[-1].set_weights([
-                updated_rewind_weights,
-                rewind_biases
-            ])
+            if not reinit:
+                pruned_submodel.layers[-1].set_weights([
+                    updated_rewind_weights,
+                    rewind_biases
+                ])
         else:
-            pruned_submodel.layers[-1].set_weights([
-                rewind_weights,
-                rewind_biases
-            ])
+            if not reinit:
+                pruned_submodel.layers[-1].set_weights([
+                    rewind_weights,
+                    rewind_biases
+                ])
     elif isinstance(submodel.layers[-1], keras.layers.Dense):
         if not isinstance(submodel.layers[-2], keras.layers.Dense) or not isinstance(submodel.layers[-2], keras.layers.Conv2D):
             if isinstance(submodel.layers[-3], keras.layers.Conv2D):
@@ -151,10 +158,11 @@ def _structural_prune_submodel(
                 pruned_submodel.add(output_layer)
                 rewind_weights, rewind_biases = rewind_submodel.layers[-1].get_weights()
                 updated_rewind_weights = rewind_weights[previous_layer_remaining_filter_indices, :]
-                pruned_submodel.layers[-1].set_weights([
-                    updated_rewind_weights,
-                    rewind_biases
-                ])
+                if not reinit:
+                    pruned_submodel.layers[-1].set_weights([
+                        updated_rewind_weights,
+                        rewind_biases
+                    ])
             else:
                 raise NotImplementedError
         else:
@@ -165,7 +173,8 @@ def _structural_prune_submodel(
         weights = rewind_submodel.layers[-1].get_weights()
         output_layer = type(rewind_submodel.layers[-1]).from_config(output_layer_config)
         pruned_submodel.add(output_layer)
-        pruned_submodel.layers[-1].set_weights(weights)
+        if not reinit:
+            pruned_submodel.layers[-1].set_weights(weights)
 
     return pruned_submodel, left_to_prune_internal
 

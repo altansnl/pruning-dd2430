@@ -11,16 +11,17 @@ import utils
 tf.keras.utils.set_random_seed(1)
 tf.config.experimental.enable_op_determinism()
 
-# HYPER-PARAMETERS FOR EXPERIMENTS
-LATENT_DIM             = 8       # isn't this too low?
+# HYPER-PARAMETERS FOR EXPERIMENTS                                                                              
+LATENT_DIM             = 8       
 TRAIN_SIZE             = 60000
 BATCH_SIZE             = 64
 TEST_SIZE              = 10000
 EPOCH_NORMAL_FIT       = 30       # number of epochs to be ran before the prunning cycles
-NUM_PRUNING_CYCLES     = 5
-EPOCH_PRUNING_CYCLE    = 5
+NUM_PRUNING_CYCLES     = 1
+EPOCH_PRUNING_CYCLE    = 15
 REWIND_WEIGHTS_EPOCH   = 3       # reverts weights to initial random initialization or specified epoch
-FINAL_PRUNE_PERCENTAGE = 0.9
+FINAL_PRUNE_PERCENTAGE = 0.2
+REINIT = True
 
 SCENARIOS = [1, 2, 3, 4]
 SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
@@ -155,7 +156,8 @@ if __name__ == "__main__":
                     left_to_prune_encoder, 
                     left_to_prune_decoder, 
                     FINAL_PRUNE_PERCENTAGE, 
-                    NUM_PRUNING_CYCLES-pruning_iteration
+                    NUM_PRUNING_CYCLES-pruning_iteration,
+                    reinit=REINIT
                 )
                 print("maps after pruning")
                 print(left_to_prune_encoder, "\n", left_to_prune_decoder)
