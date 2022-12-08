@@ -65,6 +65,7 @@ initial_encoder = tf.keras.Sequential(
         tf.keras.layers.Conv2D(
             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Dense(64),
         tf.keras.layers.Reshape(target_shape=(2304,)),
         tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
     ],
