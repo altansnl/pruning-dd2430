@@ -69,7 +69,13 @@ def _structural_prune_submodel(
     input_layer = tf.keras.layers.InputLayer(input_shape=submodel.layers[0].input_shape[1:])
     pruned_submodel = tf.keras.Sequential([input_layer])
     remaining_filter_indices_list = []
-    for no, layer in enumerate(submodel.layers[:-1]):  # Exclude last layer
+
+    if isinstance(submodel.layers[-1], keras.layers.Reshape):
+        last = 2
+    else:
+        last = 1
+
+    for no, layer in enumerate(submodel.layers[:-last]):  # Exclude last layer
         if isinstance(layer, keras.layers.Conv2D):
             conv_weights, _ = layer.get_weights()
             if isinstance(layer, keras.layers.Conv2DTranspose):
@@ -153,15 +159,18 @@ def _structural_prune_submodel(
             pruned_submodel.layers[-1].set_weights(rewind_weights)
 
     # Add last layer
-    if isinstance(submodel.layers[-1], keras.layers.Conv2D):
-        output_layer_config = submodel.layers[-1].get_config()
-        output_layer = type(submodel.layers[-1]).from_config(output_layer_config)
+    if isinstance(submodel.layers[-last], keras.layers.Conv2D):
+        output_layer_config = submodel.layers[-last].get_config()
+        output_layer = type(submodel.layers[-last]).from_config(output_layer_config)
         pruned_submodel.add(output_layer)
+
         # Get rewind weights
-        rewind_weights, rewind_biases = rewind_submodel.layers[-1].get_weights()
-        if isinstance(submodel.layers[-2], keras.layers.Conv2D):
+        rewind_weights, rewind_biases = rewind_submodel.layers[-last].get_weights()
+
+        if isinstance(submodel.layers[-last-1], keras.layers.Conv2D) or isinstance(submodel.layers[-last-1],
+                                                                                      keras.layers.BatchNormalization):
             previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
-            if isinstance(submodel.layers[-2], keras.layers.Conv2DTranspose):
+            if isinstance(submodel.layers[-last-1], keras.layers.Conv2DTranspose):
                 updated_rewind_weights = rewind_weights[:, :, :, previous_layer_remaining_filter_indices]
             else:
                 updated_rewind_weights = rewind_weights[:, :, previous_layer_remaining_filter_indices, :]
@@ -174,15 +183,16 @@ def _structural_prune_submodel(
                 rewind_weights,
                 rewind_biases
             ])
-    elif isinstance(submodel.layers[-1], keras.layers.Dense):
-        if isinstance(submodel.layers[-2], keras.layers.GlobalAveragePooling2D):
-            if isinstance(submodel.layers[-3], keras.layers.Conv2D) or isinstance(submodel.layers[-3],
+
+    elif isinstance(submodel.layers[-last], keras.layers.Dense):
+        if isinstance(submodel.layers[-last-1], keras.layers.GlobalAveragePooling2D):
+            if isinstance(submodel.layers[-last-2], keras.layers.Conv2D) or isinstance(submodel.layers[-last-2],
                                                                                   keras.layers.BatchNormalization):
                 previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
-                output_layer_config = rewind_submodel.layers[-1].get_config()
-                output_layer = type(rewind_submodel.layers[-1]).from_config(output_layer_config)
+                output_layer_config = rewind_submodel.layers[-last].get_config()
+                output_layer = type(rewind_submodel.layers[-last]).from_config(output_layer_config)
                 pruned_submodel.add(output_layer)
-                rewind_weights, rewind_biases = rewind_submodel.layers[-1].get_weights()
+                rewind_weights, rewind_biases = rewind_submodel.layers[-last].get_weights()
                 updated_rewind_weights = rewind_weights[previous_layer_remaining_filter_indices, :]
                 pruned_submodel.layers[-1].set_weights([
                     updated_rewind_weights,
@@ -194,9 +204,9 @@ def _structural_prune_submodel(
             raise NotImplementedError
 
     else:
-        output_layer_config = rewind_submodel.layers[-1].get_config()
-        weights = rewind_submodel.layers[-1].get_weights()
-        output_layer = type(rewind_submodel.layers[-1]).from_config(output_layer_config)
+        output_layer_config = rewind_submodel.layers[-last].get_config()
+        weights = rewind_submodel.layers[-last].get_weights()
+        output_layer = type(rewind_submodel.layers[-last]).from_config(output_layer_config)
         pruned_submodel.add(output_layer)
         pruned_submodel.layers[-1].set_weights(weights)
 

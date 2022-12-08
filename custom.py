@@ -21,21 +21,21 @@ import utils
 # tf.config.experimental.enable_op_determinism()
 
 # HYPER-PARAMETERS FOR EXPERIMENTS
-LATENT_DIM = 20  # isn't this too low?
+LATENT_DIM = 20
 TRAIN_SIZE = 60000
 BATCH_SIZE = 64
 TEST_SIZE = 10000
-NUM_PRUNING_CYCLES = 1
-EPOCH_PRUNING_CYCLE = 3
-REWIND_WEIGHTS_EPOCH = 2  # reverts weights to initial random initialization or specified epoch
-FINAL_PRUNE_PERCENTAGE = 0.4
+NUM_PRUNING_CYCLES = 5
+EPOCH_PRUNING_CYCLE = 10
+REWIND_WEIGHTS_EPOCH = 6  # reverts weights to initial random initialization or specified epoch
+FINAL_PRUNE_PERCENTAGE = 0.5
 
-# SCENARIOS = [1, 2, 3, 4]
-# SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-SCENARIOS = [1, 4]
-SCENARIO_LABELS = ["Original", "Both Encoder and Decoder"]
+SCENARIOS = [1, 2, 3, 4]
+SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
+# SCENARIOS = [1, 4]
+# SCENARIO_LABELS = ["Original", "Both Encoder and Decoder"]
 
-optimizer = tf.keras.optimizers.Adam(1e-4)
+optimizer = tf.keras.optimizers.Adam(5e-4)
 
 
 def preprocess_images(images):
@@ -43,22 +43,55 @@ def preprocess_images(images):
     return np.where(images > .5, 1.0, 0.0).astype('float32')
 
 
+# initial_encoder = tf.keras.Sequential(
+#     [
+#         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+#         tf.keras.layers.Conv2D(
+#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2D(
+#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.GlobalAveragePooling2D(),
+#         tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
+#     ],
+#     name="Encoder"
+# )
+
+# initial_decoder = tf.keras.Sequential(
+#     [
+#         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
+#         tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
+#         tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=64, kernel_size=3, strides=2, padding='same',
+#             activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=64, kernel_size=3, strides=2, padding='same',
+#             activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=1, kernel_size=3, strides=1, padding='same'),
+#     ],
+#     name="Decoder"
+# )
+
 initial_encoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
         tf.keras.layers.Conv2D(
-            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+            filters=32, kernel_size=3, strides=2, activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2D(
-            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+            filters=64, kernel_size=3, strides=2, activation='relu', padding="same"),
         tf.keras.layers.BatchNormalization(),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Flatten(),
-        tf.keras.layers.GlobalAveragePooling2D(),
-        # No activation
-        tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
+        tf.keras.layers.Conv2D(
+            filters=128, kernel_size=3, strides=2, activation='relu', padding="valid"),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Conv2D(
+            filters=LATENT_DIM + LATENT_DIM, kernel_size=3, strides=1, activation='relu', padding="valid"),
+        tf.keras.layers.Reshape(target_shape=(LATENT_DIM + LATENT_DIM,))
     ],
     name="Encoder"
 )
@@ -66,22 +99,21 @@ initial_encoder = tf.keras.Sequential(
 initial_decoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(256, activation="relu"),
-        # tf.keras.layers.Dense(784),
-        # tf.keras.layers.Reshape((28, 28, 1), input_shape=(784,)),
-        tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
-        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+        tf.keras.layers.Reshape(target_shape=(1, 1, LATENT_DIM,)),
         tf.keras.layers.Conv2DTranspose(
-            filters=64, kernel_size=3, strides=2, padding='same',
+            filters=128, kernel_size=3, strides=1, padding='valid',
             activation='relu'),
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2DTranspose(
-            filters=64, kernel_size=3, strides=2, padding='same',
+            filters=64, kernel_size=3, strides=2, padding='valid',
             activation='relu'),
-        # No activation
+        tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2DTranspose(
-            filters=1, kernel_size=3, strides=1, padding='same'),
+            filters=32, kernel_size=3, strides=2, padding='same',
+            activation='relu'),
+        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.Conv2DTranspose(
+            filters=1, kernel_size=3, strides=2, padding='same'),
     ],
     name="Decoder"
 )
@@ -89,10 +121,9 @@ initial_decoder = tf.keras.Sequential(
 (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
 test_images = preprocess_images(test_images)
-train_dataset = (tf.data.Dataset.from_tensor_slices(train_images)
-                 .shuffle(TRAIN_SIZE).batch(BATCH_SIZE))
-test_dataset = (tf.data.Dataset.from_tensor_slices(test_images)
-                .shuffle(TRAIN_SIZE).batch(BATCH_SIZE))
+
+train_dataset_raw = tf.data.Dataset.from_tensor_slices(train_images)
+test_dataset_raw = tf.data.Dataset.from_tensor_slices(test_images)
 
 ##############################################
 
@@ -109,10 +140,13 @@ for no, scenario in enumerate(SCENARIOS):
     print(f"Scenario: {SCENARIO_LABELS[no]}")
 
     for pruning_iteration in range(NUM_PRUNING_CYCLES):
-        # cvae.encoder.summary()
-        # cvae.decoder.summary()
+        cvae.encoder.summary()
+        cvae.decoder.summary()
 
         for epoch in range(1, EPOCH_PRUNING_CYCLE + 1):
+            train_dataset = train_dataset_raw.shuffle(TRAIN_SIZE).batch(BATCH_SIZE)
+            test_dataset = test_dataset_raw.shuffle(TEST_SIZE).batch(BATCH_SIZE)
+
             start_time = time.time()
             for train_x in train_dataset:
                 cvae.train_step(train_x, optimizer)
@@ -129,7 +163,7 @@ for no, scenario in enumerate(SCENARIOS):
                   .format(epoch, test_elbo, end_time - start_time))
 
             if epoch == REWIND_WEIGHTS_EPOCH:
-                print("rewind weights are saved!")
+                print("Rewind weights are saved!")
                 rewind_model = CVAE(clone_model(cvae.encoder), clone_model(cvae.decoder), LATENT_DIM)
                 rewind_model.encoder.set_weights(cvae.encoder.get_weights())
                 rewind_model.decoder.set_weights(cvae.decoder.get_weights())
@@ -153,7 +187,7 @@ for no, scenario in enumerate(SCENARIOS):
             left_to_prune_encoder = None
             left_to_prune_decoder = None
 
-        print("maps before pruning")
+        print("Maps before pruning")
         print(left_to_prune_encoder, "\n", left_to_prune_decoder)
 
         cvae, left_to_prune_encoder, left_to_prune_decoder = pruning.structural_prune(
@@ -166,9 +200,9 @@ for no, scenario in enumerate(SCENARIOS):
             NUM_PRUNING_CYCLES - pruning_iteration
         )
 
-        print("maps after pruning")
+        print("Maps after pruning")
         print(left_to_prune_encoder, "\n", left_to_prune_decoder)
-        print("pruned and rewinded!")
+        print("Pruned and Rewinded!")
 
         mean_inference_time, total_flops, total_params = utils.save_and_calculate_metrics(cvae, test_dataset,
                                                                                           scenario)
