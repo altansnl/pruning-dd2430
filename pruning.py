@@ -170,7 +170,7 @@ def _structural_prune_submodel(
         if isinstance(submodel.layers[-last-1], keras.layers.Conv2D) or isinstance(submodel.layers[-last-1],
                                                                                       keras.layers.BatchNormalization):
             previous_layer_remaining_filter_indices = remaining_filter_indices_list[-1]
-            if isinstance(submodel.layers[-last-1], keras.layers.Conv2DTranspose):
+            if isinstance(submodel.layers[-last], keras.layers.Conv2DTranspose):
                 updated_rewind_weights = rewind_weights[:, :, :, previous_layer_remaining_filter_indices]
             else:
                 updated_rewind_weights = rewind_weights[:, :, previous_layer_remaining_filter_indices, :]
@@ -209,5 +209,10 @@ def _structural_prune_submodel(
         output_layer = type(rewind_submodel.layers[-last]).from_config(output_layer_config)
         pruned_submodel.add(output_layer)
         pruned_submodel.layers[-1].set_weights(weights)
+
+    if isinstance(submodel.layers[-1], keras.layers.Reshape):
+        reshape_layer_config = rewind_submodel.layers[-1].get_config()
+        reshape_layer = type(rewind_submodel.layers[-1]).from_config(reshape_layer_config)
+        pruned_submodel.add(reshape_layer)
 
     return pruned_submodel, left_to_prune_internal

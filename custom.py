@@ -21,9 +21,9 @@ import utils
 # tf.config.experimental.enable_op_determinism()
 
 # HYPER-PARAMETERS FOR EXPERIMENTS
-LATENT_DIM = 20
+LATENT_DIM = 32
 TRAIN_SIZE = 60000
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 TEST_SIZE = 10000
 NUM_PRUNING_CYCLES = 5
 EPOCH_PRUNING_CYCLE = 10
@@ -32,10 +32,23 @@ FINAL_PRUNE_PERCENTAGE = 0.5
 
 SCENARIOS = [1, 2, 3, 4]
 SCENARIO_LABELS = ["Original", "Only Encoder", "Only Decoder", "Both Encoder and Decoder"]
-# SCENARIOS = [1, 4]
-# SCENARIO_LABELS = ["Original", "Both Encoder and Decoder"]
+# SCENARIOS = [1]
+# SCENARIO_LABELS = ["Original"]
 
-optimizer = tf.keras.optimizers.Adam(5e-4)
+optimizer = tf.keras.optimizers.Adam(1e-4)
+
+
+def generate_images(model, test_sample):
+    mean, logvar = model.encode(test_sample)
+    z = model.reparameterize(mean, logvar)
+    predictions = model.sample(z)
+    fig2, ax2 = plt.subplots(4, figsize=(4, 4))
+
+    for i in range(predictions.shape[0]):
+        ax2[i].imshow(predictions[i, :, :, 0], cmap='gray')
+        ax2[i].axis('off')
+
+    fig2.show()
 
 
 def preprocess_images(images):
@@ -43,55 +56,17 @@ def preprocess_images(images):
     return np.where(images > .5, 1.0, 0.0).astype('float32')
 
 
-# initial_encoder = tf.keras.Sequential(
-#     [
-#         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-#         tf.keras.layers.Conv2D(
-#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2D(
-#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.GlobalAveragePooling2D(),
-#         tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
-#     ],
-#     name="Encoder"
-# )
-
-# initial_decoder = tf.keras.Sequential(
-#     [
-#         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
-#         tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
-#         tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=64, kernel_size=3, strides=2, padding='same',
-#             activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=64, kernel_size=3, strides=2, padding='same',
-#             activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=1, kernel_size=3, strides=1, padding='same'),
-#     ],
-#     name="Decoder"
-# )
-
 initial_encoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
         tf.keras.layers.Conv2D(
-            filters=32, kernel_size=3, strides=2, activation='relu', padding="same"),
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2D(
-            filters=64, kernel_size=3, strides=2, activation='relu', padding="same"),
+            filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=128, kernel_size=3, strides=2, activation='relu', padding="valid"),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=LATENT_DIM + LATENT_DIM, kernel_size=3, strides=1, activation='relu', padding="valid"),
-        tf.keras.layers.Reshape(target_shape=(LATENT_DIM + LATENT_DIM,))
+        tf.keras.layers.Reshape(target_shape=(2304,)),
+        tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
     ],
     name="Encoder"
 )
@@ -99,24 +74,62 @@ initial_encoder = tf.keras.Sequential(
 initial_decoder = tf.keras.Sequential(
     [
         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
-        tf.keras.layers.Reshape(target_shape=(1, 1, LATENT_DIM,)),
+        tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
+        tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
         tf.keras.layers.Conv2DTranspose(
-            filters=128, kernel_size=3, strides=1, padding='valid',
+            filters=64, kernel_size=3, strides=2, padding='same',
             activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2DTranspose(
-            filters=64, kernel_size=3, strides=2, padding='valid',
+            filters=64, kernel_size=3, strides=2, padding='same',
             activation='relu'),
         tf.keras.layers.BatchNormalization(),
         tf.keras.layers.Conv2DTranspose(
-            filters=32, kernel_size=3, strides=2, padding='same',
-            activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2DTranspose(
-            filters=1, kernel_size=3, strides=2, padding='same'),
+            filters=1, kernel_size=3, strides=1, padding='same'),
     ],
     name="Decoder"
 )
+
+# initial_encoder = tf.keras.Sequential(
+#     [
+#         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+#         tf.keras.layers.Conv2D(
+#             filters=32, kernel_size=3, strides=2, activation='relu', padding="same"),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2D(
+#             filters=64, kernel_size=3, strides=2, activation='relu', padding="same"),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2D(
+#             filters=128, kernel_size=3, strides=2, activation='relu', padding="valid"),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2D(
+#             filters=LATENT_DIM + LATENT_DIM, kernel_size=3, strides=1, activation='relu', padding="valid"),
+#         tf.keras.layers.Reshape(target_shape=(LATENT_DIM + LATENT_DIM,))
+#     ],
+#     name="Encoder"
+# )
+#
+# initial_decoder = tf.keras.Sequential(
+#     [
+#         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
+#         tf.keras.layers.Reshape(target_shape=(1, 1, LATENT_DIM,)),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=128, kernel_size=3, strides=1, padding='valid',
+#             activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=64, kernel_size=3, strides=2, padding='valid',
+#             activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=32, kernel_size=3, strides=2, padding='same',
+#             activation='relu'),
+#         tf.keras.layers.BatchNormalization(),
+#         tf.keras.layers.Conv2DTranspose(
+#             filters=1, kernel_size=3, strides=2, padding='same'),
+#     ],
+#     name="Decoder"
+# )
 
 (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
@@ -124,6 +137,9 @@ test_images = preprocess_images(test_images)
 
 train_dataset_raw = tf.data.Dataset.from_tensor_slices(train_images)
 test_dataset_raw = tf.data.Dataset.from_tensor_slices(test_images)
+
+for test_batch in test_dataset_raw.batch(BATCH_SIZE).take(1):
+    test_sample = test_batch[0:4, :, :, :]
 
 ##############################################
 
@@ -140,8 +156,8 @@ for no, scenario in enumerate(SCENARIOS):
     print(f"Scenario: {SCENARIO_LABELS[no]}")
 
     for pruning_iteration in range(NUM_PRUNING_CYCLES):
-        cvae.encoder.summary()
-        cvae.decoder.summary()
+        # cvae.encoder.summary()
+        # cvae.decoder.summary()
 
         for epoch in range(1, EPOCH_PRUNING_CYCLE + 1):
             train_dataset = train_dataset_raw.shuffle(TRAIN_SIZE).batch(BATCH_SIZE)
@@ -219,6 +235,9 @@ for no, scenario in enumerate(SCENARIOS):
     ax[0, 1].plot(np.arange(0, len(mean_inference_time_ratio_list)), mean_inference_time_ratio_list)
     ax[1, 0].plot(np.arange(0, len(total_flops_ratio_list)), total_flops_ratio_list)
     ax[1, 1].plot(np.arange(0, len(total_params_ratio_list)), total_params_ratio_list)
+
+    generate_images(cvae, test_sample)
+
 
 # ax[0, 0].legend()
 ax[0, 0].set_xlabel("Epochs")
