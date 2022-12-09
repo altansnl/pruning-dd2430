@@ -24,9 +24,9 @@ def structural_prune(
         print('[LOG] Pruning mode: Global')
     else:
         print('[LOG] Pruning mode: Per Layer')
-    if scenario == 1:
+    if scenario == 4:
         pruned_cvae = cvae
-    elif scenario == 2:
+    elif scenario == 1:
         if _global:
             pruned_encoder, left_to_prune_encoder = _global_structural_prune_submodel(
                 cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
@@ -39,7 +39,7 @@ def structural_prune(
         pruned_decoder = cvae.decoder
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
 
-    elif scenario == 3:
+    elif scenario == 2:
         pruned_encoder = cvae.encoder
         if _global:
             pruned_decoder, left_to_prune_decoder = _global_structural_prune_submodel(
@@ -51,7 +51,7 @@ def structural_prune(
         pruned_decoder = load_model('saved_models/pruned_decoder.h5')
         pruned_cvae = CVAE(pruned_encoder, pruned_decoder, cvae.latent_dim)
 
-    elif scenario == 4:
+    elif scenario == 3:
         if _global:
             pruned_encoder, left_to_prune_encoder = _global_structural_prune_submodel(
                 cvae.encoder, rewind_cvae.encoder, left_to_prune_encoder, final_prune_percentage, prunes_left)
