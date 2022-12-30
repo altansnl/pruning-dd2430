@@ -17,6 +17,7 @@ import utils
 # tf.config.experimental.enable_op_determinism()
 
 # HYPER-PARAMETERS FOR EXPERIMENTS
+CVAE_TYPE = "shallow"
 LATENT_DIM = 32
 TRAIN_SIZE = 60000
 BATCH_SIZE = 32
@@ -50,87 +51,93 @@ def preprocess_images(images):
     return np.where(images > .5, 1.0, 0.0).astype('float32')
 
 
-# initial_encoder = tf.keras.Sequential(
-#     [
-#         tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-#         tf.keras.layers.Conv2D(
-#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2D(
-#             filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Dense(64),
-#         tf.keras.layers.Reshape(target_shape=(2304,)),
-#         tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
-#     ],
-#     name="Encoder"
-# )
-#
-# initial_decoder = tf.keras.Sequential(
-#     [
-#         tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
-#         tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
-#         tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=64, kernel_size=3, strides=2, padding='same',
-#             activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=64, kernel_size=3, strides=2, padding='same',
-#             activation='relu'),
-#         tf.keras.layers.BatchNormalization(),
-#         tf.keras.layers.Conv2DTranspose(
-#             filters=1, kernel_size=3, strides=1, padding='same'),
-#     ],
-#     name="Decoder"
-# )
+if CVAE_TYPE == "shallow":
+    # ---------------- Shallow Better CVAE ---------------- #
+    initial_encoder = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=(2, 2), activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Dense(64),
+            tf.keras.layers.Reshape(target_shape=(2304,)),
+            tf.keras.layers.Dense(LATENT_DIM + LATENT_DIM),
+        ],
+        name="Encoder"
+    )
 
-initial_encoder = tf.keras.Sequential(
-    [
-        tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
-        tf.keras.layers.Conv2D(
-            filters=16, kernel_size=3, strides=1, activation='relu', padding="valid"),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=32, kernel_size=2, strides=2, activation='relu', padding="valid"),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=64, kernel_size=3, strides=2, activation='relu', padding="valid"),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=64, kernel_size=2, strides=2, activation='relu', padding="valid"),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2D(
-            filters=LATENT_DIM + LATENT_DIM, kernel_size=3, strides=1, activation='relu', padding="valid"),
-        # tf.keras.layers.Reshape(target_shape=(LATENT_DIM + LATENT_DIM,))
-    ],
-    name="Encoder"
-)
+    initial_decoder = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=(LATENT_DIM,)),
+            tf.keras.layers.Dense(units=7 * 7 * 32, activation=tf.nn.relu),
+            tf.keras.layers.Reshape(target_shape=(7, 7, 32)),
+            tf.keras.layers.Conv2DTranspose(
+                filters=64, kernel_size=3, strides=2, padding='same',
+                activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=64, kernel_size=3, strides=2, padding='same',
+                activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=1, kernel_size=3, strides=1, padding='same'),
+        ],
+        name="Decoder"
+    )
 
-initial_decoder = tf.keras.Sequential(
-    [
-        tf.keras.layers.InputLayer(input_shape=(1, 1, LATENT_DIM,)),
-        # tf.keras.layers.Reshape(target_shape=(1, 1, LATENT_DIM,)),
-        tf.keras.layers.Conv2DTranspose(
-            filters=64, kernel_size=3, strides=1, padding='valid',
-            activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2DTranspose(
-            filters=64, kernel_size=2, strides=2, padding='valid',
-            activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2DTranspose(
-            filters=32, kernel_size=3, strides=2, padding='valid',
-            activation='relu'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2DTranspose(
-            filters=16, kernel_size=2, strides=2, padding='valid'),
-        tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Conv2DTranspose(
-            filters=1, kernel_size=3, strides=1, padding='valid'),
-    ],
-    name="Decoder"
-)
+elif CVAE_TYPE == "Deep":
+    initial_encoder = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=(28, 28, 1)),
+            tf.keras.layers.Conv2D(
+                filters=16, kernel_size=3, strides=1, activation='relu', padding="valid"),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2D(
+                filters=32, kernel_size=2, strides=2, activation='relu', padding="valid"),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=3, strides=2, activation='relu', padding="valid"),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2D(
+                filters=64, kernel_size=2, strides=2, activation='relu', padding="valid"),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2D(
+                filters=LATENT_DIM + LATENT_DIM, kernel_size=3, strides=1, activation='relu', padding="valid"),
+            # tf.keras.layers.Reshape(target_shape=(LATENT_DIM + LATENT_DIM,))
+        ],
+        name="Encoder"
+    )
+
+    initial_decoder = tf.keras.Sequential(
+        [
+            tf.keras.layers.InputLayer(input_shape=(1, 1, LATENT_DIM,)),
+            # tf.keras.layers.Reshape(target_shape=(1, 1, LATENT_DIM,)),
+            tf.keras.layers.Conv2DTranspose(
+                filters=64, kernel_size=3, strides=1, padding='valid',
+                activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=64, kernel_size=2, strides=2, padding='valid',
+                activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=32, kernel_size=3, strides=2, padding='valid',
+                activation='relu'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=16, kernel_size=2, strides=2, padding='valid'),
+            tf.keras.layers.BatchNormalization(),
+            tf.keras.layers.Conv2DTranspose(
+                filters=1, kernel_size=3, strides=1, padding='valid'),
+        ],
+        name="Decoder"
+    )
+
+else:
+    raise NotImplementedError
 
 (train_images, _), (test_images, _) = keras.datasets.mnist.load_data()
 train_images = preprocess_images(train_images)
@@ -275,7 +282,7 @@ ax[1, 1].set_xlabel("Pruning Iterations")
 ax[1, 1].set_ylabel("Params %")
 
 date_string = datetime.now().strftime("%d-%m-%Y-%H-%M")
-results_dir = "results/" + date_string + "/"
+results_dir = "../results/" + date_string + "/"
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
 

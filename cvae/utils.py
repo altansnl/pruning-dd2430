@@ -9,14 +9,14 @@ from model import CVAE
 
 
 def save_models(encoder, decoder, scenario):
-    encoder.save(f'saved_models/encoder-scenario-{scenario}.h5')
-    decoder.save(f'saved_models/decoder-scenario-{scenario}.h5')
+    encoder.save(f'../saved_models/encoder-scenario-{scenario}.h5')
+    decoder.save(f'../saved_models/decoder-scenario-{scenario}.h5')
 
 
 def reset_and_load_models(latent_dim, scenario):
     tf.keras.backend.clear_session()
-    test_encoder = load_model(f'saved_models/encoder-scenario-{scenario}.h5', compile=False)
-    test_decoder = load_model(f'saved_models/decoder-scenario-{scenario}.h5', compile=False)
+    test_encoder = load_model(f'../saved_models/encoder-scenario-{scenario}.h5', compile=False)
+    test_decoder = load_model(f'../saved_models/decoder-scenario-{scenario}.h5', compile=False)
     test_cvae = CVAE(test_encoder, test_decoder, latent_dim)
 
     return test_cvae
@@ -28,7 +28,7 @@ def calculate_time(test_dataset, latent_dim, scenario):
     decoder_inputs = test_dataset.map(lambda x: test_cvae.encoder(x, training=False)[..., :latent_dim])
 
     inference_time = []
-    for i in range(1):  # 6
+    for i in range(2):  # 6
         start_time = time.time()
         test_cvae.encoder.predict(test_dataset)
         test_cvae.decoder.predict(decoder_inputs)
