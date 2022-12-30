@@ -25,10 +25,10 @@ def reset_and_load_models(latent_dim, scenario):
 def calculate_time(test_dataset, latent_dim, scenario):
     # Reset graph before testing
     test_cvae = reset_and_load_models(latent_dim, scenario)
-    decoder_inputs = test_dataset.map(lambda x: test_cvae.encoder(x, training=False)[:, :latent_dim])
+    decoder_inputs = test_dataset.map(lambda x: test_cvae.encoder(x, training=False)[..., :latent_dim])
 
     inference_time = []
-    for i in range(6):
+    for i in range(1):  # 6
         start_time = time.time()
         test_cvae.encoder.predict(test_dataset)
         test_cvae.decoder.predict(decoder_inputs)
@@ -48,7 +48,7 @@ def calculate_flop(test_dataset, latent_dim, scenario):
 
     encoder_flops = flops.get_flops(test_cvae.encoder, [enc_sample])
 
-    dec_sample = tf.constant(np.expand_dims(test_cvae.encoder(sample)[0, :latent_dim], axis=0))
+    dec_sample = tf.constant(np.expand_dims(test_cvae.encoder(sample)[0, ..., :latent_dim], axis=0))
     decoder_flops = flops.get_flops(test_cvae.decoder, [dec_sample])
 
     total_flops = encoder_flops + decoder_flops
